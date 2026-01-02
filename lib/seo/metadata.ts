@@ -50,12 +50,14 @@ export function generateMetadata(baseUrl: string): Metadata {
 			"dc.description": SITE_DESCRIPTION,
 			"dc.creator": CREATOR_NAME,
 			"dc.subject":
-				"HAR file analysis, HTTP Archive viewer, Network debugging",
+				"HAR file analysis, HAR to API documentation, HAR to Markdown, HTTP Archive converter, Network debugging, API documentation generator, Response schema analyzer",
 			"dc.format": "text/html",
 			"dc.language": "en",
 			"og:url": canonicalUrl,
 			"og:type": "website",
 			"og:site_name": SITE_NAME,
+			"og:title": SITE_TITLE,
+			"og:description": SITE_DESCRIPTION,
 			"github:url": REPOSITORY_URL,
 		},
 	};

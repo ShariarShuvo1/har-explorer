@@ -175,7 +175,7 @@ export function ExportView() {
 
 	const generatedContent = useMemo(() => {
 		if (options.format === "har") {
-			return generateHAR(scopedEntries);
+			return "";
 		}
 
 		if (visibleEndpoints.length === 0) return "";
@@ -183,7 +183,12 @@ export function ExportView() {
 		return options.format === "markdown"
 			? generateMarkdown(visibleEndpoints, options)
 			: generatePlainText(visibleEndpoints, options);
-	}, [visibleEndpoints, options, scopedEntries]);
+	}, [visibleEndpoints, options]);
+
+	const harPreviewStats = useMemo(() => {
+		if (options.format !== "har") return null;
+		return generateHARPreviewStats(scopedEntries);
+	}, [options.format, scopedEntries]);
 
 	const handleDownload = () => {
 		const extension =
@@ -207,7 +212,14 @@ export function ExportView() {
 						.toISOString()
 						.slice(0, 10)}${extension}`;
 
-		const blob = new Blob([generatedContent], { type: mimeType });
+		const content =
+			options.format === "har"
+				? generateHAR(scopedEntries)
+				: generatedContent;
+
+		if (!content) return;
+
+		const blob = new Blob([content], { type: mimeType });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement("a");
 		a.href = url;
@@ -219,6 +231,7 @@ export function ExportView() {
 	};
 
 	const handleCopy = () => {
+		if (!generatedContent) return;
 		navigator.clipboard.writeText(generatedContent);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2000);
@@ -287,14 +300,17 @@ export function ExportView() {
 					<div className="flex items-center gap-2">
 						<button
 							onClick={handleCopy}
-							disabled={!generatedContent}
+							disabled={
+								!generatedContent || options.format === "har"
+							}
 							className={cn(
 								"flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all",
 								"border border-border",
 								copied
 									? "bg-green-500/20 text-green-400 border-green-500/30"
 									: "bg-card/60 text-foreground hover:bg-primary/10 hover:border-primary/30",
-								!generatedContent &&
+								(!generatedContent ||
+									options.format === "har") &&
 									"opacity-50 cursor-not-allowed"
 							)}
 						>
@@ -312,11 +328,17 @@ export function ExportView() {
 						</button>
 						<button
 							onClick={handleDownload}
-							disabled={!generatedContent}
+							disabled={
+								options.format === "har"
+									? scopedEntries.length === 0
+									: !generatedContent
+							}
 							className={cn(
 								"flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
 								"bg-foreground text-background hover:bg-foreground/90 border border-foreground/20",
-								!generatedContent &&
+								(options.format === "har"
+									? scopedEntries.length === 0
+									: !generatedContent) &&
 									"opacity-50 cursor-not-allowed"
 							)}
 						>
@@ -646,7 +668,125 @@ export function ExportView() {
 					)}
 				>
 					<div className="h-full rounded-lg border border-border bg-card/30 overflow-auto">
-						{!generatedContent ? (
+						{options.format === "har" ? (
+							<div className="flex flex-col items-center justify-center h-full py-12 px-6">
+								<Package className="w-12 h-12 text-primary mb-4" />
+								<h3 className="text-lg font-semibold text-foreground mb-2">
+									HAR File Ready for Export
+								</h3>
+								<p className="text-sm text-muted text-center mb-6 max-w-sm">
+									HAR files can be quite large. Preview is
+									disabled to prevent performance issues.
+									Click download to export your file.
+								</p>
+
+								{scopedEntries.length > 0 &&
+									harPreviewStats && (
+										<div className="bg-card/40 border border-border rounded-lg p-6 w-full max-w-sm space-y-4">
+											<div className="space-y-3">
+												<div className="flex justify-between items-center">
+													<span className="text-sm text-muted">
+														Total Entries:
+													</span>
+													<span className="font-semibold text-foreground">
+														{scopedEntries.length}
+													</span>
+												</div>
+												<div className="flex justify-between items-center">
+													<span className="text-sm text-muted">
+														Estimated Size:
+													</span>
+													<span className="font-semibold text-foreground">
+														{
+															harPreviewStats.totalSize
+														}
+													</span>
+												</div>
+											</div>
+
+											{harPreviewStats.domains.length >
+												0 && (
+												<div className="pt-3 border-t border-border/30">
+													<p className="text-xs font-semibold text-muted mb-2 uppercase tracking-wide">
+														Domains
+													</p>
+													<div className="flex flex-wrap gap-2">
+														{harPreviewStats.domains
+															.slice(0, 5)
+															.map((domain) => (
+																<span
+																	key={domain}
+																	className="text-xs px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20"
+																>
+																	{domain}
+																</span>
+															))}
+														{harPreviewStats.domains
+															.length > 5 && (
+															<span className="text-xs px-2 py-1 rounded bg-muted/10 text-muted">
+																+
+																{harPreviewStats
+																	.domains
+																	.length -
+																	5}{" "}
+																more
+															</span>
+														)}
+													</div>
+												</div>
+											)}
+
+											{harPreviewStats.methods.length >
+												0 && (
+												<div className="pt-3 border-t border-border/30">
+													<p className="text-xs font-semibold text-muted mb-2 uppercase tracking-wide">
+														HTTP Methods
+													</p>
+													<div className="flex gap-2">
+														{harPreviewStats.methods.map(
+															(method) => (
+																<span
+																	key={method}
+																	className={cn(
+																		"text-xs font-bold px-2 py-1 rounded",
+																		method ===
+																			"GET" &&
+																			"bg-green-500/20 text-green-400",
+																		method ===
+																			"POST" &&
+																			"bg-blue-500/20 text-blue-400",
+																		method ===
+																			"PUT" &&
+																			"bg-yellow-500/20 text-yellow-400",
+																		method ===
+																			"DELETE" &&
+																			"bg-red-500/20 text-red-400",
+																		method ===
+																			"PATCH" &&
+																			"bg-purple-500/20 text-purple-400",
+																		![
+																			"GET",
+																			"POST",
+																			"PUT",
+																			"DELETE",
+																			"PATCH",
+																		].includes(
+																			method
+																		) &&
+																			"bg-gray-500/20 text-gray-400"
+																	)}
+																>
+																	{method}
+																</span>
+															)
+														)}
+													</div>
+												</div>
+											)}
+										</div>
+									)}
+							</div>
+						) : !generatedContent ? (
 							<div className="flex flex-col items-center justify-center h-full py-12">
 								<FileText className="w-12 h-12 text-muted mb-4" />
 								<p className="text-lg font-medium text-foreground mb-2">
@@ -768,130 +908,6 @@ export function ExportView() {
 								>
 									{generatedContent}
 								</ReactMarkdown>
-							</div>
-						) : options.format === "har" ? (
-							<div className="flex flex-col items-center justify-center h-full py-12 px-6">
-								<Package className="w-12 h-12 text-primary mb-4" />
-								<h3 className="text-lg font-semibold text-foreground mb-2">
-									HAR File Ready for Export
-								</h3>
-								<p className="text-sm text-muted text-center mb-6 max-w-sm">
-									HAR files can be quite large. Preview is
-									disabled to prevent performance issues.
-									Click download to export your file.
-								</p>
-
-								{scopedEntries.length > 0 && (
-									<div className="bg-card/40 border border-border rounded-lg p-6 w-full max-w-sm space-y-4">
-										<div className="space-y-3">
-											<div className="flex justify-between items-center">
-												<span className="text-sm text-muted">
-													Total Entries:
-												</span>
-												<span className="font-semibold text-foreground">
-													{scopedEntries.length}
-												</span>
-											</div>
-											<div className="flex justify-between items-center">
-												<span className="text-sm text-muted">
-													Estimated Size:
-												</span>
-												<span className="font-semibold text-foreground">
-													{(() => {
-														const stats =
-															generateHARPreviewStats(
-																scopedEntries
-															);
-														return stats.totalSize;
-													})()}
-												</span>
-											</div>
-										</div>
-
-										{generateHARPreviewStats(scopedEntries)
-											.domains.length > 0 && (
-											<div className="pt-3 border-t border-border/30">
-												<p className="text-xs font-semibold text-muted mb-2 uppercase tracking-wide">
-													Domains
-												</p>
-												<div className="flex flex-wrap gap-2">
-													{generateHARPreviewStats(
-														scopedEntries
-													)
-														.domains.slice(0, 5)
-														.map((domain) => (
-															<span
-																key={domain}
-																className="text-xs px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20"
-															>
-																{domain}
-															</span>
-														))}
-													{generateHARPreviewStats(
-														scopedEntries
-													).domains.length > 5 && (
-														<span className="text-xs px-2 py-1 rounded bg-muted/10 text-muted">
-															+
-															{generateHARPreviewStats(
-																scopedEntries
-															).domains.length -
-																5}{" "}
-															more
-														</span>
-													)}
-												</div>
-											</div>
-										)}
-
-										{generateHARPreviewStats(scopedEntries)
-											.methods.length > 0 && (
-											<div className="pt-3 border-t border-border/30">
-												<p className="text-xs font-semibold text-muted mb-2 uppercase tracking-wide">
-													HTTP Methods
-												</p>
-												<div className="flex gap-2">
-													{generateHARPreviewStats(
-														scopedEntries
-													).methods.map((method) => (
-														<span
-															key={method}
-															className={cn(
-																"text-xs font-bold px-2 py-1 rounded",
-																method ===
-																	"GET" &&
-																	"bg-green-500/20 text-green-400",
-																method ===
-																	"POST" &&
-																	"bg-blue-500/20 text-blue-400",
-																method ===
-																	"PUT" &&
-																	"bg-yellow-500/20 text-yellow-400",
-																method ===
-																	"DELETE" &&
-																	"bg-red-500/20 text-red-400",
-																method ===
-																	"PATCH" &&
-																	"bg-purple-500/20 text-purple-400",
-																![
-																	"GET",
-																	"POST",
-																	"PUT",
-																	"DELETE",
-																	"PATCH",
-																].includes(
-																	method
-																) &&
-																	"bg-gray-500/20 text-gray-400"
-															)}
-														>
-															{method}
-														</span>
-													))}
-												</div>
-											</div>
-										)}
-									</div>
-								)}
 							</div>
 						) : (
 							<pre className="p-6 font-mono text-sm text-foreground/90 whitespace-pre-wrap">
