@@ -5,11 +5,10 @@ export const SITE_NAME = "HAR Explorer";
 
 export const GA_MEASUREMENT_ID = "G-RY149KJ0QL";
 
-export const SITE_TITLE =
-	"HAR Explorer - Convert HAR to API Docs, Markdown & Analyze HTTP Archive Files";
+export const SITE_TITLE = "HAR Explorer - Convert HAR to API Docs & Markdown";
 
 export const SITE_DESCRIPTION =
-	"Free online HAR file viewer, analyzer and converter. Generate API documentation from HAR files, convert HAR to Markdown/TXT, analyze HTTP requests with response schema detection, debug network performance, detect patterns, view detailed timings, and export filtered data. All processing happens client-side - no data leaves your browser.";
+	"Free online HAR file viewer, analyzer and converter. Generate API documentation from HAR files, convert HAR to Markdown/TXT.";
 
 export const KEYWORDS = [
 	"HAR file viewer",
