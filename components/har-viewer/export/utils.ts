@@ -211,7 +211,7 @@ export function deduplicateAndAnalyzeEndpoints(
 				entries: [],
 				requestSchema: null,
 				responseSchema: null,
-				queryParams: new Set(),
+				queryParams: new Map(),
 				requestHeaders: new Map(),
 				responseHeaders: new Map(),
 				statusCodes: new Set(),
@@ -226,7 +226,12 @@ export function deduplicateAndAnalyzeEndpoints(
 		endpoint.statusCodes.add(entry.response.status);
 
 		entry.request.queryString.forEach((param) => {
-			endpoint.queryParams.add(param.name);
+			if (!endpoint.queryParams.has(param.name)) {
+				endpoint.queryParams.set(param.name, new Set());
+			}
+			if (param.value) {
+				endpoint.queryParams.get(param.name)!.add(param.value);
+			}
 		});
 
 		entry.request.headers.forEach((header) => {
@@ -381,10 +386,14 @@ export function generateMarkdown(
 
 			if (options.includeQueryParams && endpoint.queryParams.size > 0) {
 				md += `#### Query Parameters\n\n`;
-				md += `| Parameter |\n`;
-				md += `|-----------|\n`;
-				endpoint.queryParams.forEach((param) => {
-					md += `| \`${param}\` |\n`;
+				md += `| Parameter | Example Values |\n`;
+				md += `|-----------|---------------|\n`;
+				endpoint.queryParams.forEach((values, paramName) => {
+					const exampleValues = Array.from(values)
+						.slice(0, 3)
+						.join(", ");
+					const displayValues = exampleValues || "(no value)";
+					md += `| \`${paramName}\` | \`${displayValues}\` |\n`;
 				});
 				md += `\n`;
 			}
@@ -490,8 +499,12 @@ export function generatePlainText(
 
 			if (options.includeQueryParams && endpoint.queryParams.size > 0) {
 				txt += `\nQuery Parameters:\n`;
-				endpoint.queryParams.forEach((param) => {
-					txt += `  - ${param}\n`;
+				endpoint.queryParams.forEach((values, paramName) => {
+					const exampleValues = Array.from(values)
+						.slice(0, 3)
+						.join(", ");
+					const displayValues = exampleValues || "(no value)";
+					txt += `  - ${paramName}: ${displayValues}\n`;
 				});
 			}
 
@@ -647,5 +660,307 @@ export function generateHARPreviewStats(entries: HAREntry[]): {
 		entryCount: entries.length,
 		domains: Array.from(domains).sort(),
 		methods: Array.from(methods).sort(),
+	};
+}
+
+function convertSchemaToOpenAPI(
+	schema: Record<string, unknown> | null
+): Record<string, unknown> | null {
+	if (!schema) return null;
+
+	const openApiSchema: Record<string, unknown> = {};
+
+	if (schema.type === "array" && schema.items) {
+		openApiSchema.type = "array";
+		openApiSchema.items = convertSchemaToOpenAPI(
+			schema.items as Record<string, unknown>
+		);
+	} else if (schema.type === "object" && schema.properties) {
+		openApiSchema.type = "object";
+		const properties: Record<string, unknown> = {};
+		const props = schema.properties as Record<
+			string,
+			Record<string, unknown>
+		>;
+
+		for (const [key, value] of Object.entries(props)) {
+			properties[key] = convertSchemaToOpenAPI(value) || {
+				type: "string",
+			};
+		}
+		openApiSchema.properties = properties;
+	} else if (schema.type) {
+		const typeStr = String(schema.type);
+		if (typeStr.includes("|")) {
+			const types = typeStr.split("|").map((t) => t.trim());
+			const nonNullTypes = types.filter((t) => t !== "null");
+
+			if (nonNullTypes.length === 1) {
+				openApiSchema.type = nonNullTypes[0];
+				if (types.includes("null")) {
+					openApiSchema.nullable = true;
+				}
+			} else {
+				openApiSchema.anyOf = nonNullTypes.map((t) => ({ type: t }));
+				if (types.includes("null")) {
+					openApiSchema.nullable = true;
+				}
+			}
+		} else if (typeStr === "datetime" || typeStr === "date") {
+			openApiSchema.type = "string";
+			openApiSchema.format =
+				typeStr === "datetime" ? "date-time" : "date";
+		} else if (typeStr === "email") {
+			openApiSchema.type = "string";
+			openApiSchema.format = "email";
+		} else if (typeStr === "url") {
+			openApiSchema.type = "string";
+			openApiSchema.format = "uri";
+		} else if (typeStr === "uuid") {
+			openApiSchema.type = "string";
+			openApiSchema.format = "uuid";
+		} else if (typeStr === "objectId") {
+			openApiSchema.type = "string";
+			openApiSchema.pattern = "^[a-f0-9]{24}$";
+		} else {
+			openApiSchema.type = typeStr;
+		}
+	}
+
+	return openApiSchema;
+}
+
+export function generateOpenAPI(endpoints: UniqueEndpoint[]): string {
+	const paths: Record<string, Record<string, unknown>> = {};
+	const schemas: Record<string, unknown> = {};
+	const servers = new Set<string>();
+
+	for (const endpoint of endpoints) {
+		try {
+			const urlObj = new URL(endpoint.pattern);
+			const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
+			servers.add(baseUrl);
+
+			const path = urlObj.pathname || "/";
+			const method = endpoint.method.toLowerCase();
+
+			if (!paths[path]) {
+				paths[path] = {};
+			}
+
+			const operation: Record<string, unknown> = {
+				summary: `${endpoint.method} ${path}`,
+				description: `API endpoint called ${
+					endpoint.totalCalls
+				} time(s) with average response time of ${endpoint.avgResponseTime.toFixed(
+					2
+				)}ms`,
+				operationId: `${method}${path.replace(/[^a-zA-Z0-9]/g, "")}`,
+				tags: [endpoint.domain],
+			};
+
+			const parameters: Array<Record<string, unknown>> = [];
+
+			if (endpoint.queryParams.size > 0) {
+				endpoint.queryParams.forEach((values, paramName) => {
+					const schema: Record<string, unknown> = { type: "string" };
+
+					if (values.size > 0) {
+						const exampleValue = Array.from(values)[0];
+						schema.default = exampleValue;
+						schema.example = exampleValue;
+					}
+
+					const paramDef: Record<string, unknown> = {
+						name: paramName,
+						in: "query",
+						required: false,
+						schema,
+					};
+
+					if (values.size > 0) {
+						const exampleValue = Array.from(values)[0];
+						paramDef.example = exampleValue;
+						if (values.size > 1) {
+							paramDef.examples = Array.from(values)
+								.slice(0, 3)
+								.map((val, idx) => ({
+									[`example${idx + 1}`]: { value: val },
+								}))
+								.reduce(
+									(acc, curr) => ({ ...acc, ...curr }),
+									{}
+								);
+						}
+					}
+
+					parameters.push(paramDef);
+				});
+			}
+
+			const pathParams = path.match(/\{[^}]+\}/g);
+			if (pathParams) {
+				pathParams.forEach((param) => {
+					const paramName = param.slice(1, -1);
+					let paramType = "string";
+
+					if (paramName === "id" || paramName === "objectId") {
+						paramType = "string";
+					} else if (paramName === "uuid") {
+						paramType = "string";
+					}
+
+					parameters.push({
+						name: paramName,
+						in: "path",
+						required: true,
+						schema: { type: paramType },
+					});
+				});
+			}
+
+			if (parameters.length > 0) {
+				operation.parameters = parameters;
+			}
+
+			if (
+				endpoint.requestSchema &&
+				["POST", "PUT", "PATCH"].includes(endpoint.method)
+			) {
+				const schemaName = `${endpoint.method}${path.replace(
+					/[^a-zA-Z0-9]/g,
+					""
+				)}Request`;
+				const convertedSchema = convertSchemaToOpenAPI(
+					endpoint.requestSchema
+				);
+
+				if (convertedSchema) {
+					schemas[schemaName] = convertedSchema;
+
+					operation.requestBody = {
+						required: true,
+						content: {
+							"application/json": {
+								schema: {
+									$ref: `#/components/schemas/${schemaName}`,
+								},
+							},
+						},
+					};
+				}
+			}
+
+			const responses: Record<string, unknown> = {};
+
+			endpoint.statusCodes.forEach((status) => {
+				const statusStr = String(status);
+				const description =
+					status >= 200 && status < 300
+						? "Successful response"
+						: status >= 400 && status < 500
+						? "Client error"
+						: status >= 500
+						? "Server error"
+						: "Response";
+
+				if (endpoint.responseSchema && status >= 200 && status < 300) {
+					const schemaName = `${endpoint.method}${path.replace(
+						/[^a-zA-Z0-9]/g,
+						""
+					)}Response`;
+					const convertedSchema = convertSchemaToOpenAPI(
+						endpoint.responseSchema
+					);
+
+					if (convertedSchema) {
+						schemas[schemaName] = convertedSchema;
+
+						responses[statusStr] = {
+							description,
+							content: {
+								"application/json": {
+									schema: {
+										$ref: `#/components/schemas/${schemaName}`,
+									},
+								},
+							},
+						};
+					} else {
+						responses[statusStr] = { description };
+					}
+				} else {
+					responses[statusStr] = { description };
+				}
+			});
+
+			operation.responses = responses;
+			paths[path][method] = operation;
+		} catch (error) {
+			console.error("Error processing endpoint:", endpoint, error);
+		}
+	}
+
+	const openApiSpec = {
+		openapi: "3.0.3",
+		info: {
+			title: "API Documentation",
+			description: "Generated from HAR file analysis",
+			version: "1.0.0",
+			contact: {
+				name: "HAR Explorer",
+			},
+		},
+		servers: Array.from(servers).map((url) => ({ url })),
+		paths,
+		components: {
+			schemas,
+		},
+	};
+
+	return JSON.stringify(openApiSpec, null, 2);
+}
+
+export function generateOpenAPIPreviewStats(endpoints: UniqueEndpoint[]): {
+	totalSize: string;
+	endpointCount: number;
+	operations: number;
+	schemas: number;
+	servers: number;
+} {
+	const openApiContent = generateOpenAPI(endpoints);
+	const sizeInBytes = new Blob([openApiContent]).size;
+
+	const servers = new Set<string>();
+	let schemasCount = 0;
+
+	endpoints.forEach((endpoint) => {
+		try {
+			const urlObj = new URL(endpoint.pattern);
+			servers.add(`${urlObj.protocol}//${urlObj.host}`);
+
+			if (endpoint.requestSchema) schemasCount++;
+			if (endpoint.responseSchema) schemasCount++;
+		} catch {
+			// Ignore invalid URLs
+		}
+	});
+
+	const formatBytes = (bytes: number): string => {
+		if (bytes === 0) return "0 Bytes";
+		const k = 1024;
+		const sizes = ["Bytes", "KB", "MB", "GB"];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return (
+			Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i]
+		);
+	};
+
+	return {
+		totalSize: formatBytes(sizeInBytes),
+		endpointCount: endpoints.length,
+		operations: endpoints.length,
+		schemas: schemasCount,
+		servers: servers.size,
 	};
 }

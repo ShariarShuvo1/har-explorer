@@ -38,6 +38,8 @@ import {
 	generatePlainText,
 	generateHAR,
 	generateHARPreviewStats,
+	generateOpenAPI,
+	generateOpenAPIPreviewStats,
 } from "./utils";
 
 const SCOPE_OPTIONS: Array<{
@@ -80,6 +82,7 @@ const FORMAT_OPTIONS: Array<{
 }> = [
 	{ id: "markdown", label: "Markdown", icon: FileCode, extension: ".md" },
 	{ id: "txt", label: "Plain Text", icon: FileText, extension: ".txt" },
+	{ id: "openapi", label: "OpenAPI", icon: FileCode, extension: ".json" },
 	{ id: "har", label: "HAR File", icon: FileJson, extension: ".har" },
 ];
 
@@ -126,6 +129,7 @@ export function ExportView() {
 		new Set()
 	);
 	const [isAnalyzing, setIsAnalyzing] = useState(false);
+	const [deduplicateEndpoints, setDeduplicateEndpoints] = useState(true);
 
 	const scopedEntries = useMemo(() => {
 		switch (options.scope) {
@@ -157,14 +161,42 @@ export function ExportView() {
 			});
 		}
 
-		const result = deduplicateAndAnalyzeEndpoints(scopedEntries);
+		const result = deduplicateEndpoints
+			? deduplicateAndAnalyzeEndpoints(scopedEntries)
+			: scopedEntries.map((entry) => {
+					const queryParams = new Map<string, Set<string>>();
+					entry.request.queryString.forEach((q) => {
+						if (!queryParams.has(q.name)) {
+							queryParams.set(q.name, new Set());
+						}
+						if (q.value) {
+							queryParams.get(q.name)!.add(q.value);
+						}
+					});
+
+					return {
+						pattern: entry.request.url,
+						method: entry.request.method,
+						domain: new URL(entry.request.url).hostname,
+						path: new URL(entry.request.url).pathname,
+						entries: [entry],
+						requestSchema: null,
+						responseSchema: null,
+						queryParams,
+						requestHeaders: new Map(),
+						responseHeaders: new Map(),
+						statusCodes: new Set([entry.response.status]),
+						avgResponseTime: entry.time,
+						totalCalls: 1,
+					};
+			  });
 
 		if (scopedEntries.length > 50) {
 			setTimeout(() => setIsAnalyzing(false), 100);
 		}
 
 		return result;
-	}, [scopedEntries, options.format]);
+	}, [scopedEntries, options.format, deduplicateEndpoints]);
 
 	const visibleEndpoints = useMemo(() => {
 		return uniqueEndpoints.filter((endpoint) => {
@@ -176,6 +208,12 @@ export function ExportView() {
 	const generatedContent = useMemo(() => {
 		if (options.format === "har") {
 			return "";
+		}
+
+		if (options.format === "openapi") {
+			return visibleEndpoints.length > 0
+				? generateOpenAPI(visibleEndpoints)
+				: "";
 		}
 
 		if (visibleEndpoints.length === 0) return "";
@@ -190,12 +228,19 @@ export function ExportView() {
 		return generateHARPreviewStats(scopedEntries);
 	}, [options.format, scopedEntries]);
 
+	const openApiPreviewStats = useMemo(() => {
+		if (options.format !== "openapi") return null;
+		return generateOpenAPIPreviewStats(visibleEndpoints);
+	}, [options.format, visibleEndpoints]);
+
 	const handleDownload = () => {
 		const extension =
 			options.format === "markdown"
 				? ".md"
 				: options.format === "txt"
 				? ".txt"
+				: options.format === "openapi"
+				? ".json"
 				: ".har";
 		const mimeType =
 			options.format === "markdown"
@@ -206,6 +251,10 @@ export function ExportView() {
 		const filename =
 			options.format === "har"
 				? `har-export-${new Date()
+						.toISOString()
+						.slice(0, 10)}${extension}`
+				: options.format === "openapi"
+				? `openapi-spec-${new Date()
 						.toISOString()
 						.slice(0, 10)}${extension}`
 				: `api-documentation-${new Date()
@@ -348,6 +397,8 @@ export function ExportView() {
 								? ".md"
 								: options.format === "txt"
 								? ".txt"
+								: options.format === "openapi"
+								? ".json"
 								: ".har"}
 						</button>
 					</div>
@@ -434,110 +485,154 @@ export function ExportView() {
 						</div>
 					</div>
 
-					{options.format !== "har" && (
-						<>
-							<div className="space-y-2">
-								<label className="text-xs font-medium text-muted uppercase tracking-wide">
-									Group By
-								</label>
-								<div className="flex items-center">
-									<select
-										value={options.groupBy}
-										onChange={(e) =>
-											updateOption(
-												"groupBy",
-												e.target.value as GroupByOption
+					{(options.format === "markdown" ||
+						options.format === "txt" ||
+						options.format === "openapi") && (
+						<div className="space-y-2">
+							<label className="text-xs font-medium text-muted uppercase tracking-wide">
+								Endpoint Mode
+							</label>
+							<button
+								onClick={() =>
+									setDeduplicateEndpoints(
+										!deduplicateEndpoints
+									)
+								}
+								className={cn(
+									"h-9.5 flex items-center gap-2 px-3 rounded-lg text-sm transition-all border",
+									deduplicateEndpoints
+										? "bg-primary/10 border-primary/30 text-primary"
+										: "bg-card/40 border-border text-muted hover:text-foreground hover:border-border/80"
+								)}
+							>
+								{deduplicateEndpoints ? (
+									<CheckSquare className="w-4 h-4" />
+								) : (
+									<Square className="w-4 h-4" />
+								)}
+								<span>
+									{deduplicateEndpoints
+										? "Unique Endpoints"
+										: "All Requests"}
+								</span>
+							</button>
+						</div>
+					)}
+
+					{options.format !== "har" &&
+						options.format !== "openapi" && (
+							<>
+								<div className="space-y-2">
+									<label className="text-xs font-medium text-muted uppercase tracking-wide">
+										Group By
+									</label>
+									<div className="flex items-center">
+										<select
+											value={options.groupBy}
+											onChange={(e) =>
+												updateOption(
+													"groupBy",
+													e.target
+														.value as GroupByOption
+												)
+											}
+											aria-label="Group endpoints by"
+											className="h-9.5 px-3 rounded-lg text-sm bg-card/40 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+										>
+											{GROUP_OPTIONS.map((opt) => (
+												<option
+													key={opt.id}
+													value={opt.id}
+												>
+													{opt.label}
+												</option>
+											))}
+										</select>
+									</div>
+								</div>
+
+								<div className="space-y-2">
+									<div className="h-4" />
+									<button
+										onClick={() =>
+											setShowAdvancedOptions(
+												!showAdvancedOptions
 											)
 										}
-										aria-label="Group endpoints by"
-										className="h-9.5 px-3 rounded-lg text-sm bg-card/40 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+										className="h-9.5 flex items-center gap-2 px-3 rounded-lg text-sm text-muted hover:text-foreground hover:bg-card/40 transition-all"
 									>
-										{GROUP_OPTIONS.map((opt) => (
-											<option key={opt.id} value={opt.id}>
-												{opt.label}
-											</option>
-										))}
-									</select>
+										<Settings2 className="w-4 h-4" />
+										Advanced Options
+										{showAdvancedOptions ? (
+											<ChevronUp className="w-3.5 h-3.5" />
+										) : (
+											<ChevronDown className="w-3.5 h-3.5" />
+										)}
+									</button>
 								</div>
-							</div>
-
-							<div className="space-y-2">
-								<div className="h-4" />
-								<button
-									onClick={() =>
-										setShowAdvancedOptions(
-											!showAdvancedOptions
-										)
-									}
-									className="h-9.5 flex items-center gap-2 px-3 rounded-lg text-sm text-muted hover:text-foreground hover:bg-card/40 transition-all"
-								>
-									<Settings2 className="w-4 h-4" />
-									Advanced Options
-									{showAdvancedOptions ? (
-										<ChevronUp className="w-3.5 h-3.5" />
-									) : (
-										<ChevronDown className="w-3.5 h-3.5" />
-									)}
-								</button>
-							</div>
-						</>
-					)}
+							</>
+						)}
 				</div>
 
-				{showAdvancedOptions && options.format !== "har" && (
-					<div className="mt-4 pt-4 border-t border-border/50">
-						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-							<ToggleOption
-								icon={Globe}
-								label="Headers"
-								checked={options.includeHeaders}
-								onChange={(v) =>
-									updateOption("includeHeaders", v)
-								}
-							/>
-							<ToggleOption
-								icon={Filter}
-								label="Query Params"
-								checked={options.includeQueryParams}
-								onChange={(v) =>
-									updateOption("includeQueryParams", v)
-								}
-							/>
-							<ToggleOption
-								icon={Code}
-								label="Request Body"
-								checked={options.includeRequestBody}
-								onChange={(v) =>
-									updateOption("includeRequestBody", v)
-								}
-							/>
-							<ToggleOption
-								icon={FileCode}
-								label="Response Schema"
-								checked={options.includeResponseSchema}
-								onChange={(v) =>
-									updateOption("includeResponseSchema", v)
-								}
-							/>
-							<ToggleOption
-								icon={Activity}
-								label="Performance"
-								checked={options.includePerformanceMetrics}
-								onChange={(v) =>
-									updateOption("includePerformanceMetrics", v)
-								}
-							/>
-							<ToggleOption
-								icon={Code}
-								label="cURL Examples"
-								checked={options.includeCurlExamples}
-								onChange={(v) =>
-									updateOption("includeCurlExamples", v)
-								}
-							/>
+				{showAdvancedOptions &&
+					options.format !== "har" &&
+					options.format !== "openapi" && (
+						<div className="mt-4 pt-4 border-t border-border/50">
+							<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+								<ToggleOption
+									icon={Globe}
+									label="Headers"
+									checked={options.includeHeaders}
+									onChange={(v) =>
+										updateOption("includeHeaders", v)
+									}
+								/>
+								<ToggleOption
+									icon={Filter}
+									label="Query Params"
+									checked={options.includeQueryParams}
+									onChange={(v) =>
+										updateOption("includeQueryParams", v)
+									}
+								/>
+								<ToggleOption
+									icon={Code}
+									label="Request Body"
+									checked={options.includeRequestBody}
+									onChange={(v) =>
+										updateOption("includeRequestBody", v)
+									}
+								/>
+								<ToggleOption
+									icon={FileCode}
+									label="Response Schema"
+									checked={options.includeResponseSchema}
+									onChange={(v) =>
+										updateOption("includeResponseSchema", v)
+									}
+								/>
+								<ToggleOption
+									icon={Activity}
+									label="Performance"
+									checked={options.includePerformanceMetrics}
+									onChange={(v) =>
+										updateOption(
+											"includePerformanceMetrics",
+											v
+										)
+									}
+								/>
+								<ToggleOption
+									icon={Code}
+									label="cURL Examples"
+									checked={options.includeCurlExamples}
+									onChange={(v) =>
+										updateOption("includeCurlExamples", v)
+									}
+								/>
+							</div>
 						</div>
-					</div>
-				)}
+					)}
 			</div>
 
 			<div className="flex-1 flex overflow-hidden">
@@ -546,7 +641,9 @@ export function ExportView() {
 						<div className="space-y-3">
 							<div className="flex items-center justify-between">
 								<h3 className="text-sm font-semibold text-foreground">
-									Endpoints
+									{deduplicateEndpoints
+										? "Endpoints"
+										: "Requests"}
 								</h3>
 								<span className="text-xs text-muted bg-card px-2 py-0.5 rounded-full flex items-center gap-1">
 									{isAnalyzing && (
@@ -561,17 +658,25 @@ export function ExportView() {
 								<div className="text-center py-12">
 									<Loader2 className="w-8 h-8 text-primary mx-auto mb-3 animate-spin" />
 									<p className="text-sm font-medium text-foreground mb-1">
-										Analyzing API Endpoints
+										{deduplicateEndpoints
+											? "Analyzing API Endpoints"
+											: "Loading Requests"}
 									</p>
 									<p className="text-xs text-muted">
-										Merging schemas from all responses...
+										{deduplicateEndpoints
+											? "Merging schemas from all responses..."
+											: "Processing individual requests..."}
 									</p>
 								</div>
 							) : uniqueEndpoints.length === 0 ? (
 								<div className="text-center py-8">
 									<Filter className="w-8 h-8 text-muted mx-auto mb-2" />
 									<p className="text-sm text-muted">
-										No entries match the current scope
+										No{" "}
+										{deduplicateEndpoints
+											? "endpoints"
+											: "requests"}{" "}
+										match the current scope
 									</p>
 								</div>
 							) : (
@@ -635,8 +740,11 @@ export function ExportView() {
 														{endpoint.method}
 													</span>
 													<span className="text-[10px] text-muted">
-														{endpoint.totalCalls}{" "}
-														calls
+														{deduplicateEndpoints
+															? `${endpoint.totalCalls} calls`
+															: `${endpoint.avgResponseTime.toFixed(
+																	0
+															  )}ms`}
 													</span>
 												</div>
 												<p
@@ -661,14 +769,116 @@ export function ExportView() {
 					</div>
 				)}
 
-				<div
-					className={cn(
-						"overflow-auto p-4 bg-card/10",
-						options.format === "har" ? "flex-1" : "flex-1"
-					)}
-				>
+				<div className={cn("overflow-auto p-4 bg-card/10", "flex-1")}>
 					<div className="h-full rounded-lg border border-border bg-card/30 overflow-auto">
-						{options.format === "har" ? (
+						{options.format === "openapi" ? (
+							<div className="flex flex-col items-center justify-center h-full py-12 px-6">
+								<FileCode className="w-12 h-12 text-blue-500 mb-4" />
+								<h3 className="text-lg font-semibold text-foreground mb-2">
+									OpenAPI Specification Ready
+								</h3>
+								<p className="text-sm text-muted text-center mb-6 max-w-sm">
+									Your API endpoints have been analyzed and
+									converted to OpenAPI 3.0 format. Compatible
+									with Swagger, Postman, and other API tools.
+								</p>
+
+								{visibleEndpoints.length > 0 &&
+									openApiPreviewStats && (
+										<div className="w-full max-w-2xl space-y-3">
+											<div className="bg-card/60 border border-border/30 rounded-lg p-4">
+												<h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+													<Activity className="w-4 h-4 text-blue-500" />
+													Specification Overview
+												</h4>
+												<div className="grid grid-cols-2 gap-3">
+													<div className="bg-card/40 border border-border/20 rounded p-3">
+														<div className="text-[10px] font-medium text-muted uppercase mb-1">
+															File Size
+														</div>
+														<div className="text-lg font-bold text-foreground">
+															{
+																openApiPreviewStats.totalSize
+															}
+														</div>
+													</div>
+													<div className="bg-card/40 border border-border/20 rounded p-3">
+														<div className="text-[10px] font-medium text-muted uppercase mb-1">
+															Endpoints
+														</div>
+														<div className="text-lg font-bold text-foreground">
+															{
+																openApiPreviewStats.endpointCount
+															}
+														</div>
+													</div>
+													<div className="bg-card/40 border border-border/20 rounded p-3">
+														<div className="text-[10px] font-medium text-muted uppercase mb-1">
+															Operations
+														</div>
+														<div className="text-lg font-bold text-foreground">
+															{
+																openApiPreviewStats.operations
+															}
+														</div>
+													</div>
+													<div className="bg-card/40 border border-border/20 rounded p-3">
+														<div className="text-[10px] font-medium text-muted uppercase mb-1">
+															Schemas
+														</div>
+														<div className="text-lg font-bold text-foreground">
+															{
+																openApiPreviewStats.schemas
+															}
+														</div>
+													</div>
+												</div>
+											</div>
+
+											<div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+												<div className="flex items-start gap-3">
+													<FileCode className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+													<div className="space-y-2">
+														<p className="text-sm text-blue-400 font-medium">
+															What you can do with
+															this file:
+														</p>
+														<ul className="text-xs text-blue-400/80 space-y-1 list-disc list-inside">
+															<li>
+																Import into
+																Swagger Editor
+																or Swagger UI
+															</li>
+															<li>
+																Generate client
+																SDKs with
+																OpenAPI
+																Generator
+															</li>
+															<li>
+																Import into
+																Postman for API
+																testing
+															</li>
+															<li>
+																Use with API
+																documentation
+																tools
+															</li>
+															<li>
+																Share
+																standardized API
+																specs with your
+																team
+															</li>
+														</ul>
+													</div>
+												</div>
+											</div>
+										</div>
+									)}
+							</div>
+						) : options.format === "har" ? (
 							<div className="flex flex-col items-center justify-center h-full py-12 px-6">
 								<Package className="w-12 h-12 text-primary mb-4" />
 								<h3 className="text-lg font-semibold text-foreground mb-2">

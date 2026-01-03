@@ -22,6 +22,16 @@ export const KEYWORDS = [
 	"HAR to TXT",
 	"HAR to text",
 	"HAR to documentation",
+	"HAR to OpenAPI",
+	"HAR to OpenAPI spec",
+	"HAR to Swagger",
+	"HAR converter to OpenAPI",
+	"convert HAR to OpenAPI",
+	"convert HAR to Swagger",
+	"generate OpenAPI from HAR",
+	"OpenAPI spec generator",
+	"Swagger spec generator",
+	"OpenAPI schema from network requests",
 	"HAR file converter",
 	"convert HAR to Markdown",
 	"convert HAR to API docs",
@@ -221,6 +231,11 @@ export const FEATURES = [
 			"Convert HAR files to Markdown format with detailed request information, headers, timings, and responses for documentation purposes",
 	},
 	{
+		name: "HAR to OpenAPI/Swagger Export",
+		description:
+			"Convert HAR files to industry-standard OpenAPI 3.0 specifications for API documentation, SDK generation, and tool integration. Compatible with Swagger Editor, Postman, and OpenAPI Generator.",
+	},
+	{
 		name: "HAR to Text Export",
 		description:
 			"Export HAR data to plain text format for easy sharing, reporting, and analysis",
@@ -286,6 +301,9 @@ export const STRUCTURED_DATA = {
 	featureList: [
 		"HAR file viewing and analysis",
 		"Convert HAR to API documentation with schema analysis",
+		"Export HAR to OpenAPI 3.0 specification",
+		"Generate Swagger/OpenAPI specs from network traffic",
+		"OpenAPI schema generation from HAR files",
 		"Export HAR to Markdown format",
 		"Export HAR to plain text format",
 		"Export filtered HAR files",
@@ -413,6 +431,46 @@ export const FAQ_STRUCTURED_DATA = {
 			acceptedAnswer: {
 				"@type": "Answer",
 				text: "Yes, HAR Explorer can convert HAR files to Markdown format. The export includes request URLs, methods, status codes, headers, timings, and response data in a well-formatted Markdown document, perfect for technical documentation, bug reports, or sharing with team members.",
+			},
+		},
+		{
+			"@type": "Question",
+			name: "Can I convert HAR to OpenAPI specification?",
+			acceptedAnswer: {
+				"@type": "Answer",
+				text: "Yes! HAR Explorer can convert HAR files to OpenAPI 3.0 specifications. The converter analyzes your API endpoints, generates schemas from request/response data, and creates a standards-compliant OpenAPI spec. You can then import it into Swagger Editor, Postman, or use OpenAPI Generator to create client SDKs. This works for both individual API endpoints and bulk exports with endpoint deduplication.",
+			},
+		},
+		{
+			"@type": "Question",
+			name: "What are the benefits of OpenAPI export?",
+			acceptedAnswer: {
+				"@type": "Answer",
+				text: "OpenAPI (formerly Swagger) is the industry standard for API documentation. By converting HAR to OpenAPI, you can: (1) Generate interactive API documentation with Swagger UI, (2) Create client SDKs automatically with OpenAPI Generator, (3) Import specs into Postman for API testing, (4) Enable IDE integration and code generation, (5) Share standardized API specifications with your team, (6) Use with popular API management and documentation tools.",
+			},
+		},
+		{
+			"@type": "Question",
+			name: "Can I export all requests or just unique endpoints?",
+			acceptedAnswer: {
+				"@type": "Answer",
+				text: "HAR Explorer offers flexible OpenAPI export options. You can enable 'Unique Endpoints' mode to deduplicate and merge similar API calls into clean endpoint definitions with merged schemas, or disable it to export every individual request as separate operations. You can also select which specific endpoints to include in the export using the sidebar.",
+			},
+		},
+		{
+			"@type": "Question",
+			name: "How does HAR Explorer handle API schemas in OpenAPI export?",
+			acceptedAnswer: {
+				"@type": "Answer",
+				text: "When exporting to OpenAPI, HAR Explorer automatically analyzes request and response payloads to generate JSON schemas. It detects data types, identifies nested structures, recognizes special formats (UUID, email, date, etc.), and merges schemas from multiple requests to create comprehensive endpoint definitions. This means your OpenAPI spec includes accurate request/response schema definitions without manual work.",
+			},
+		},
+		{
+			"@type": "Question",
+			name: "What information is included in the OpenAPI export?",
+			acceptedAnswer: {
+				"@type": "Answer",
+				text: "HAR Explorer's OpenAPI export includes: (1) Complete endpoint paths and HTTP methods, (2) Operation IDs and tags for organization, (3) Path parameters and query parameters, (4) Request body schemas with data types, (5) Response schemas for different status codes, (6) Server URLs extracted from your HAR file, (7) Parameter descriptions and examples from actual requests.",
 			},
 		},
 	],

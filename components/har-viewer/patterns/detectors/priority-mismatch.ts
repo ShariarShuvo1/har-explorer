@@ -5,7 +5,8 @@ import { getResourceType } from "../utils";
 export function detectPriorityMismatches(entries: HAREntry[]): Pattern | null {
 	const mismatches = entries
 		.map((entry, index) => {
-			const priority = (entry as any)._priority as string | undefined;
+			const priority = (entry as unknown as Record<string, unknown>)
+				._priority as string | undefined;
 			if (!priority) return null;
 
 			const resourceType = getResourceType(entry);
@@ -57,9 +58,6 @@ export function detectPriorityMismatches(entries: HAREntry[]): Pattern | null {
 
 	const criticalLowPriority = mismatches.filter(
 		(m) => m.type === "critical-low-priority"
-	);
-	const largeImageHighPriority = mismatches.filter(
-		(m) => m.type === "large-image-high-priority"
 	);
 
 	const hasCriticalIssues = criticalLowPriority.length > 0;

@@ -567,3 +567,478 @@ function formatBytes(bytes: number): string {
 	const i = Math.floor(Math.log(bytes) / Math.log(k));
 	return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
 }
+
+export function generateApiDocumentationAsText(entry: HAREntry): string {
+	const url = new URL(entry.request.url);
+	const method = entry.request.method;
+	const status = entry.response.status;
+	const contentType = entry.response.content.mimeType;
+	const isJson = contentType.includes("json");
+	const isHtml = contentType.includes("html");
+	const pathname = url.pathname;
+	const endpoint = pathname.split("/").filter(Boolean).pop() || "root";
+
+	let txt = `API DOCUMENTATION: ${method} ${endpoint}\n`;
+	txt += `${"=".repeat(70)}\n\n`;
+	txt += `Generated from HAR file analysis\n\n`;
+	txt += `${"=".repeat(70)}\n\n`;
+
+	txt += `OVERVIEW\n`;
+	txt += `${"-".repeat(70)}\n`;
+	txt += `Endpoint:  ${pathname}\n`;
+	txt += `Method:    ${method}\n`;
+	txt += `Base URL:  ${url.origin}\n`;
+	txt += `Full URL:  ${entry.request.url}\n\n`;
+
+	if (url.search) {
+		txt += `QUERY PARAMETERS\n`;
+		txt += `${"-".repeat(70)}\n`;
+		entry.request.queryString.forEach((param) => {
+			txt += `${param.name}: ${param.value}\n`;
+		});
+		txt += `\n`;
+	}
+
+	txt += `REQUEST\n`;
+	txt += `${"-".repeat(70)}\n\n`;
+	txt += `Headers:\n`;
+	entry.request.headers.forEach((header) => {
+		txt += `  ${header.name}: ${header.value}\n`;
+	});
+	txt += `\n`;
+
+	if (entry.request.postData && entry.request.postData.text) {
+		txt += `Request Body:\n`;
+		txt += `Content-Type: ${entry.request.postData.mimeType}\n\n`;
+
+		if (entry.request.postData.mimeType.includes("json")) {
+			try {
+				const parsed = JSON.parse(entry.request.postData.text);
+				txt += `Body Schema:\n`;
+				txt += analyzeJsonStructureAsText(parsed);
+			} catch {
+				txt += `${entry.request.postData.text}\n\n`;
+			}
+		} else {
+			txt += `${entry.request.postData.text}\n\n`;
+		}
+	}
+
+	txt += `RESPONSE\n`;
+	txt += `${"-".repeat(70)}\n\n`;
+	txt += `Status:\n`;
+	txt += `  Code:     ${status}\n`;
+	txt += `  Text:     ${entry.response.statusText}\n`;
+	txt += `  Category: ${getStatusDescription(status)}\n\n`;
+
+	txt += `Response Headers:\n`;
+	entry.response.headers.forEach((header) => {
+		txt += `  ${header.name}: ${header.value}\n`;
+	});
+	txt += `\n`;
+
+	txt += `Content Type:\n`;
+	if (isJson) {
+		txt += `  Type: JSON (REST API)\n`;
+		txt += `  This endpoint returns JSON data, indicating it's a RESTful API endpoint.\n\n`;
+	} else if (isHtml) {
+		txt += `  Type: HTML\n`;
+		txt += `  This endpoint returns HTML content, likely a web page.\n\n`;
+	} else {
+		txt += `  Type: ${contentType}\n\n`;
+	}
+
+	if (entry.response.content.text && isJson) {
+		txt += `Response Body:\n\n`;
+		try {
+			const parsed = JSON.parse(entry.response.content.text);
+
+			txt += `Response Schema:\n`;
+			txt += `The response object structure:\n\n`;
+			txt += analyzeJsonStructureAsText(parsed);
+			txt += `\n`;
+		} catch {
+			txt += `${entry.response.content.text}\n\n`;
+		}
+	}
+
+	txt += `PERFORMANCE METRICS\n`;
+	txt += `${"-".repeat(70)}\n`;
+	txt += `Total Time:    ${entry.time.toFixed(2)}ms\n`;
+	txt += `DNS Lookup:    ${entry.timings.dns.toFixed(2)}ms\n`;
+	txt += `Connect:       ${entry.timings.connect.toFixed(2)}ms\n`;
+	txt += `Send:          ${entry.timings.send.toFixed(2)}ms\n`;
+	txt += `Wait:          ${entry.timings.wait.toFixed(2)}ms\n`;
+	txt += `Receive:       ${entry.timings.receive.toFixed(2)}ms\n`;
+	txt += `Response Size: ${formatBytes(entry.response.content.size)}\n\n`;
+
+	txt += `USAGE EXAMPLES\n`;
+	txt += `${"-".repeat(70)}\n\n`;
+	txt += `cURL:\n`;
+	txt += `------\n`;
+	txt += `${generateCurl(entry)}\n\n`;
+
+	txt += `JavaScript (Fetch API):\n`;
+	txt += `------------------------\n`;
+	txt += `${generateFetch(entry)}\n\n`;
+
+	txt += `PowerShell:\n`;
+	txt += `-----------\n`;
+	txt += `${generatePowershell(entry)}\n\n`;
+
+	txt += `${"=".repeat(70)}\n`;
+	txt += `Documentation generated from HAR file - ${new Date(
+		entry.startedDateTime
+	).toLocaleString()}\n`;
+
+	return txt;
+}
+
+function analyzeJsonStructureAsText(obj: unknown, indent = 0): string {
+	const spaces = "  ".repeat(indent);
+	let txt = "";
+
+	if (Array.isArray(obj)) {
+		if (obj.length > 0) {
+			const firstItem = obj[0];
+			const itemType = getValueType(firstItem);
+			if (itemType === "object" && firstItem !== null) {
+				txt += `${spaces}- array of object:\n`;
+				const mergedSchema = mergeArraySchemas(obj);
+				txt += analyzeJsonStructureAsText(mergedSchema, indent + 1);
+			} else {
+				txt += `${spaces}- array of ${itemType}\n`;
+			}
+		} else {
+			txt += `${spaces}- array (empty)\n`;
+		}
+	} else if (obj !== null && typeof obj === "object") {
+		const entries = Object.entries(obj);
+		const sortedEntries = entries.sort(([a], [b]) => a.localeCompare(b));
+
+		for (const [key, value] of sortedEntries) {
+			const type = getValueType(value);
+
+			if (type === "object" && value !== null) {
+				const nestedKeys = Object.keys(value as object);
+				if (nestedKeys.length === 0) {
+					txt += `${spaces}- ${key}: object (empty)\n`;
+				} else {
+					txt += `${spaces}- ${key}: object\n`;
+					txt += analyzeJsonStructureAsText(value, indent + 1);
+				}
+			} else if (type === "array") {
+				if (Array.isArray(value) && value.length > 0) {
+					const firstItem = value[0];
+					const itemType = getValueType(firstItem);
+					if (itemType === "object" && firstItem !== null) {
+						txt += `${spaces}- ${key}: array of object\n`;
+						const mergedSchema = mergeArraySchemas(value);
+						txt += analyzeJsonStructureAsText(
+							mergedSchema,
+							indent + 1
+						);
+					} else {
+						txt += `${spaces}- ${key}: array of ${itemType}\n`;
+					}
+				} else {
+					txt += `${spaces}- ${key}: array (empty)\n`;
+				}
+			} else {
+				txt += `${spaces}- ${key}: ${type}\n`;
+			}
+		}
+	}
+
+	return txt;
+}
+
+function extractSchemaFromEntry(
+	text: string | undefined
+): Record<string, unknown> | null {
+	if (!text) return null;
+
+	try {
+		const parsed = JSON.parse(text);
+		return buildSchemaFromValue(parsed);
+	} catch {
+		return null;
+	}
+}
+
+function buildSchemaFromValue(value: unknown): Record<string, unknown> {
+	if (Array.isArray(value)) {
+		if (value.length === 0) return { type: "array", items: {} };
+
+		const itemSchemas = value.map(buildSchemaFromValue);
+		const mergedItemSchema = itemSchemas.reduce<Record<
+			string,
+			unknown
+		> | null>((acc, schema) => {
+			if (!acc) return schema;
+			return deepMergeSchemas(acc, schema);
+		}, null);
+		return { type: "array", items: mergedItemSchema || {} };
+	}
+
+	if (value !== null && typeof value === "object") {
+		const properties: Record<string, unknown> = {};
+		for (const [key, val] of Object.entries(value)) {
+			properties[key] = buildSchemaFromValue(val);
+		}
+		return { type: "object", properties };
+	}
+
+	return { type: getValueType(value) };
+}
+
+function deepMergeSchemas(
+	schema1: Record<string, unknown> | null,
+	schema2: Record<string, unknown> | null
+): Record<string, unknown> | null {
+	if (!schema1) return schema2;
+	if (!schema2) return schema1;
+
+	const merged: Record<string, unknown> = { ...schema1 };
+
+	for (const [key, value] of Object.entries(schema2)) {
+		if (!(key in merged)) {
+			merged[key] = value;
+		} else if (
+			key === "properties" &&
+			typeof value === "object" &&
+			value !== null
+		) {
+			const mergedProps = { ...(merged[key] as Record<string, unknown>) };
+			for (const [propKey, propValue] of Object.entries(
+				value as Record<string, unknown>
+			)) {
+				if (!(propKey in mergedProps)) {
+					mergedProps[propKey] = propValue;
+				} else {
+					mergedProps[propKey] = deepMergeSchemas(
+						mergedProps[propKey] as Record<string, unknown>,
+						propValue as Record<string, unknown>
+					);
+				}
+			}
+			merged[key] = mergedProps;
+		} else if (
+			key === "items" &&
+			typeof value === "object" &&
+			value !== null
+		) {
+			merged[key] = deepMergeSchemas(
+				merged[key] as Record<string, unknown>,
+				value as Record<string, unknown>
+			);
+		}
+	}
+
+	return merged;
+}
+
+function convertSchemaToOpenAPI(
+	schema: Record<string, unknown> | null
+): Record<string, unknown> | null {
+	if (!schema) return null;
+
+	const openApiSchema: Record<string, unknown> = {};
+
+	if (schema.type === "array" && schema.items) {
+		openApiSchema.type = "array";
+		openApiSchema.items = convertSchemaToOpenAPI(
+			schema.items as Record<string, unknown>
+		);
+	} else if (schema.type === "object" && schema.properties) {
+		openApiSchema.type = "object";
+		const properties: Record<string, unknown> = {};
+		const props = schema.properties as Record<
+			string,
+			Record<string, unknown>
+		>;
+
+		for (const [key, value] of Object.entries(props)) {
+			properties[key] = convertSchemaToOpenAPI(value) || {
+				type: "string",
+			};
+		}
+		openApiSchema.properties = properties;
+	} else if (schema.type) {
+		const typeStr = String(schema.type);
+		if (typeStr === "datetime" || typeStr === "date") {
+			openApiSchema.type = "string";
+			openApiSchema.format =
+				typeStr === "datetime" ? "date-time" : "date";
+		} else if (typeStr === "email") {
+			openApiSchema.type = "string";
+			openApiSchema.format = "email";
+		} else if (typeStr === "url") {
+			openApiSchema.type = "string";
+			openApiSchema.format = "uri";
+		} else if (typeStr === "uuid") {
+			openApiSchema.type = "string";
+			openApiSchema.format = "uuid";
+		} else if (typeStr === "objectId") {
+			openApiSchema.type = "string";
+			openApiSchema.pattern = "^[a-f0-9]{24}$";
+		} else {
+			openApiSchema.type = typeStr;
+		}
+	}
+
+	return openApiSchema;
+}
+
+export function generateOpenAPIForEntry(entry: HAREntry): string {
+	try {
+		const urlObj = new URL(entry.request.url);
+		const path = urlObj.pathname || "/";
+		const method = entry.request.method.toLowerCase();
+
+		const requestSchema = extractSchemaFromEntry(
+			entry.request.postData?.text
+		);
+		const responseSchema = extractSchemaFromEntry(
+			entry.response.content.text
+		);
+
+		const operation: Record<string, unknown> = {
+			summary: `${entry.request.method} ${path}`,
+			description: `API endpoint with ${entry.response.status} response`,
+			operationId: `${method}${path.replace(/[^a-zA-Z0-9]/g, "")}`,
+			tags: [urlObj.hostname],
+		};
+
+		const parameters: Array<Record<string, unknown>> = [];
+
+		if (entry.request.queryString.length > 0) {
+			entry.request.queryString.forEach((param) => {
+				const schema: Record<string, unknown> = { type: "string" };
+				if (param.value) {
+					schema.default = param.value;
+					schema.example = param.value;
+				}
+
+				parameters.push({
+					name: param.name,
+					in: "query",
+					required: false,
+					schema,
+					example: param.value,
+				});
+			});
+		}
+
+		if (parameters.length > 0) {
+			operation.parameters = parameters;
+		}
+
+		const schemas: Record<string, unknown> = {};
+
+		if (requestSchema && ["post", "put", "patch"].includes(method)) {
+			const schemaName = `${entry.request.method}${path.replace(
+				/[^a-zA-Z0-9]/g,
+				""
+			)}Request`;
+			const convertedSchema = convertSchemaToOpenAPI(requestSchema);
+
+			if (convertedSchema) {
+				schemas[schemaName] = convertedSchema;
+
+				operation.requestBody = {
+					required: true,
+					content: {
+						"application/json": {
+							schema: {
+								$ref: `#/components/schemas/${schemaName}`,
+							},
+						},
+					},
+				};
+			}
+		}
+
+		const responses: Record<string, unknown> = {};
+		const statusStr = String(entry.response.status);
+		const description =
+			entry.response.status >= 200 && entry.response.status < 300
+				? "Successful response"
+				: entry.response.status >= 400 && entry.response.status < 500
+				? "Client error"
+				: entry.response.status >= 500
+				? "Server error"
+				: "Response";
+
+		if (
+			responseSchema &&
+			entry.response.status >= 200 &&
+			entry.response.status < 300
+		) {
+			const schemaName = `${entry.request.method}${path.replace(
+				/[^a-zA-Z0-9]/g,
+				""
+			)}Response`;
+			const convertedSchema = convertSchemaToOpenAPI(responseSchema);
+
+			if (convertedSchema) {
+				schemas[schemaName] = convertedSchema;
+
+				responses[statusStr] = {
+					description,
+					content: {
+						"application/json": {
+							schema: {
+								$ref: `#/components/schemas/${schemaName}`,
+							},
+						},
+					},
+				};
+			} else {
+				responses[statusStr] = { description };
+			}
+		} else {
+			responses[statusStr] = { description };
+		}
+
+		operation.responses = responses;
+
+		const openApiSpec = {
+			openapi: "3.0.3",
+			info: {
+				title: "API Documentation",
+				description: `Generated from HAR entry: ${entry.request.method} ${path}`,
+				version: "1.0.0",
+				contact: {
+					name: "HAR Explorer",
+				},
+			},
+			servers: [
+				{
+					url: `${urlObj.protocol}//${urlObj.host}`,
+					description: "API Server",
+				},
+			],
+			paths: {
+				[path]: {
+					[method]: operation,
+				},
+			},
+			components: {
+				schemas,
+			},
+		};
+
+		return JSON.stringify(openApiSpec, null, 2);
+	} catch (error) {
+		console.error("Error generating OpenAPI:", error);
+		return JSON.stringify(
+			{
+				error: "Failed to generate OpenAPI specification",
+				message: String(error),
+			},
+			null,
+			2
+		);
+	}
+}

@@ -10,6 +10,9 @@ import {
 	Download,
 	FileText,
 	Loader2,
+	FileJson,
+	FileCode,
+	Package,
 } from "lucide-react";
 import { HAREntry } from "@/lib/stores/har-store";
 import { DetailSection } from "./shared-components";
@@ -18,6 +21,8 @@ import {
 	generateFetch,
 	generatePowershell,
 	generateApiDocumentation,
+	generateApiDocumentationAsText,
+	generateOpenAPIForEntry,
 } from "./utils";
 import { cn } from "@/lib/cn";
 import { useFocusMode } from "./focus-context";
@@ -73,7 +78,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 export function ExportTab({ entry }: ExportTabProps) {
 	const { isFocusMode } = useFocusMode();
 	const [activeFormat, setActiveFormat] = useState<
-		"curl" | "fetch" | "powershell" | "docs"
+		"curl" | "fetch" | "powershell" | "docs" | "txt" | "har" | "openapi"
 	>("curl");
 	const [docsContent, setDocsContent] = useState<string>("");
 	const [isGenerating, setIsGenerating] = useState(false);
@@ -102,7 +107,7 @@ export function ExportTab({ entry }: ExportTabProps) {
 		};
 	}, [activeFormat, docsContent, entry]);
 
-	const generateFilename = (): string => {
+	const generateFilename = (extension: string = ".md"): string => {
 		const url = new URL(entry.request.url);
 		const pathname = url.pathname
 			.split("/")
@@ -110,16 +115,72 @@ export function ExportTab({ entry }: ExportTabProps) {
 			.join("-")
 			.replace(/[^a-zA-Z0-9-_]/g, "");
 		const method = entry.request.method.toLowerCase();
+		const timestamp = new Date().toISOString().slice(0, 10);
+
+		if (extension === ".har") {
+			return `${method}-${pathname || "api"}-${timestamp}.har`;
+		} else if (extension === ".txt") {
+			return `${method}-${pathname || "api"}-${timestamp}.txt`;
+		} else if (extension === ".json") {
+			return `${method}-${pathname || "api"}-openapi.json`;
+		}
 		return `${method}-${pathname || "api"}-docs.md`;
 	};
 
-	const handleDownloadDocs = () => {
-		const markdown = docsContent || generateApiDocumentation(entry);
-		const blob = new Blob([markdown], { type: "text/markdown" });
+	const generateTxtContent = (entry: HAREntry): string => {
+		return generateApiDocumentationAsText(entry);
+	};
+
+	const generateHarContent = (entry: HAREntry): string => {
+		const harData = {
+			log: {
+				version: "1.2",
+				creator: {
+					name: "HAR Explorer",
+					version: "1.0.0",
+				},
+				entries: [entry],
+			},
+		};
+
+		return JSON.stringify(harData, null, 2);
+	};
+
+	const handleDownload = () => {
+		let content: string;
+		let mimeType: string;
+		let extension: string;
+
+		switch (activeFormat) {
+			case "docs":
+				content = docsContent || generateApiDocumentation(entry);
+				mimeType = "text/markdown";
+				extension = ".md";
+				break;
+			case "txt":
+				content = generateTxtContent(entry);
+				mimeType = "text/plain";
+				extension = ".txt";
+				break;
+			case "har":
+				content = generateHarContent(entry);
+				mimeType = "application/json";
+				extension = ".har";
+				break;
+			case "openapi":
+				content = generateOpenAPIForEntry(entry);
+				mimeType = "application/json";
+				extension = ".json";
+				break;
+			default:
+				return;
+		}
+
+		const blob = new Blob([content], { type: mimeType });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement("a");
 		a.href = url;
-		a.download = generateFilename();
+		a.download = generateFilename(extension);
 		document.body.appendChild(a);
 		a.click();
 		document.body.removeChild(a);
@@ -141,6 +202,21 @@ export function ExportTab({ entry }: ExportTabProps) {
 		{
 			id: "docs" as const,
 			label: "Docs",
+			code: "",
+		},
+		{
+			id: "txt" as const,
+			label: "Plain Text",
+			code: "",
+		},
+		{
+			id: "openapi" as const,
+			label: "OpenAPI",
+			code: "",
+		},
+		{
+			id: "har" as const,
+			label: "HAR File",
 			code: "",
 		},
 	];
@@ -170,25 +246,65 @@ export function ExportTab({ entry }: ExportTabProps) {
 				title="Export as Code"
 				icon={<Terminal className="w-3.5 h-3.5 text-green-500" />}
 			>
-				{activeFormat === "docs" ? (
+				{activeFormat === "docs" ||
+				activeFormat === "txt" ||
+				activeFormat === "har" ||
+				activeFormat === "openapi" ? (
 					<div className="space-y-2 border border-border/90 rounded">
 						<div className="flex items-center  justify-between bg-card/60 border border-border/30 rounded-t px-3 py-2">
 							<div className="flex items-center gap-2">
-								<FileText className="w-3.5 h-3.5 text-blue-500" />
+								{activeFormat === "docs" && (
+									<FileText className="w-3.5 h-3.5 text-blue-500" />
+								)}
+								{activeFormat === "txt" && (
+									<FileText className="w-3.5 h-3.5 text-green-500" />
+								)}
+								{activeFormat === "har" && (
+									<FileJson className="w-3.5 h-3.5 text-purple-500" />
+								)}
+								{activeFormat === "openapi" && (
+									<FileCode className="w-3.5 h-3.5 text-blue-500" />
+								)}
 								<span className="text-xs font-medium text-foreground">
-									API Documentation
+									{activeFormat === "docs" &&
+										"API Documentation"}
+									{activeFormat === "txt" &&
+										"Plain Text Export"}
+									{activeFormat === "har" &&
+										"HAR File Export"}
+									{activeFormat === "openapi" &&
+										"OpenAPI Specification"}
 								</span>
 								<span className="text-[10px] text-muted">
-									({generateFilename()})
+									(
+									{generateFilename(
+										activeFormat === "har"
+											? ".har"
+											: activeFormat === "txt"
+											? ".txt"
+											: activeFormat === "openapi"
+											? ".json"
+											: ".md"
+									)}
+									)
 								</span>
 							</div>
 							<button
-								onClick={handleDownloadDocs}
-								disabled={isGenerating}
+								onClick={handleDownload}
+								disabled={
+									activeFormat === "docs" && isGenerating
+								}
 								className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 							>
 								<Download className="w-3.5 h-3.5" />
-								Download .md
+								Download{" "}
+								{activeFormat === "har"
+									? ".har"
+									: activeFormat === "txt"
+									? ".txt"
+									: activeFormat === "openapi"
+									? ".json"
+									: ".md"}
 							</button>
 						</div>
 						<div
@@ -197,7 +313,131 @@ export function ExportTab({ entry }: ExportTabProps) {
 								!isFocusMode && "max-h-[48vh]"
 							)}
 						>
-							{isGenerating ? (
+							{activeFormat === "txt" ? (
+								<pre className="font-mono text-[10px] text-foreground/90 whitespace-pre-wrap">
+									{generateTxtContent(entry)}
+								</pre>
+							) : activeFormat === "openapi" ? (
+								<div className="flex flex-col items-center justify-center py-12 space-y-3">
+									<FileCode className="w-12 h-12 text-blue-500" />
+									<h3 className="text-base font-semibold text-foreground">
+										OpenAPI Specification Ready
+									</h3>
+									<p className="text-xs text-muted text-center max-w-md">
+										This API endpoint has been converted to
+										OpenAPI 3.0 format. Compatible with
+										Swagger, Postman, and other API tools.
+									</p>
+									<div className="bg-card/60 border border-border/30 rounded p-4 space-y-2 text-xs w-full max-w-md">
+										<div className="flex justify-between">
+											<span className="text-muted">
+												Method:
+											</span>
+											<span className="text-foreground font-mono">
+												{entry.request.method}
+											</span>
+										</div>
+										<div className="flex justify-between">
+											<span className="text-muted">
+												Path:
+											</span>
+											<span className="text-foreground font-mono text-[10px]">
+												{
+													new URL(entry.request.url)
+														.pathname
+												}
+											</span>
+										</div>
+										<div className="flex justify-between">
+											<span className="text-muted">
+												Status:
+											</span>
+											<span className="text-foreground font-mono">
+												{entry.response.status}
+											</span>
+										</div>
+										<div className="flex justify-between">
+											<span className="text-muted">
+												Format:
+											</span>
+											<span className="text-foreground font-mono">
+												OpenAPI 3.0.3
+											</span>
+										</div>
+									</div>
+									<div className="bg-blue-500/10 border border-blue-500/30 rounded p-3 w-full max-w-md">
+										<div className="flex items-start gap-2">
+											<FileCode className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+											<div className="space-y-1">
+												<p className="text-xs text-blue-400 font-medium">
+													Use cases:
+												</p>
+												<ul className="text-[10px] text-blue-400/80 space-y-0.5 list-disc list-inside">
+													<li>
+														Import into Swagger
+														Editor
+													</li>
+													<li>
+														Generate client SDKs
+													</li>
+													<li>API documentation</li>
+													<li>Postman integration</li>
+												</ul>
+											</div>
+										</div>
+									</div>
+								</div>
+							) : activeFormat === "har" ? (
+								<div className="flex flex-col items-center justify-center py-12 space-y-3">
+									<Package className="w-12 h-12 text-purple-500" />
+									<h3 className="text-base font-semibold text-foreground">
+										HAR File Ready
+									</h3>
+									<p className="text-xs text-muted text-center max-w-md">
+										This entry will be exported as a
+										complete HAR file with all request and
+										response details.
+									</p>
+									<div className="bg-card/60 border border-border/30 rounded p-4 space-y-2 text-xs">
+										<div className="flex justify-between">
+											<span className="text-muted">
+												Method:
+											</span>
+											<span className="font-mono text-foreground">
+												{entry.request.method}
+											</span>
+										</div>
+										<div className="flex justify-between">
+											<span className="text-muted">
+												Status:
+											</span>
+											<span className="font-mono text-foreground">
+												{entry.response.status}
+											</span>
+										</div>
+										<div className="flex justify-between">
+											<span className="text-muted">
+												Time:
+											</span>
+											<span className="font-mono text-foreground">
+												{entry.time}ms
+											</span>
+										</div>
+										<div className="flex justify-between">
+											<span className="text-muted">
+												Size:
+											</span>
+											<span className="font-mono text-foreground">
+												{(
+													(entry.response.content
+														.size || 0) / 1024
+												).toFixed(2)}{" "}
+												KB
+											</span>
+										</div>
+									</div>
+								</div>
+							) : isGenerating ? (
 								<div className="flex flex-col items-center justify-center py-12 space-y-3">
 									<Loader2 className="w-8 h-8 text-primary animate-spin" />
 									<p className="text-sm text-muted">
@@ -326,95 +566,102 @@ export function ExportTab({ entry }: ExportTabProps) {
 				)}
 			</DetailSection>
 
-			{activeFormat !== "docs" && (
-				<>
-					<DetailSection
-						title="Request Details"
-						icon={
-							<Terminal className="w-3.5 h-3.5 text-blue-500" />
-						}
-					>
-						<div className="space-y-2">
-							<div className="bg-card/40 border border-border/30 rounded p-3">
-								<div className="text-[10px] font-bold text-foreground/70 uppercase mb-1">
-									Method & URL
-								</div>
-								<div className="font-mono text-xs text-foreground break-all">
-									{entry.request.method} {entry.request.url}
-								</div>
-							</div>
-
-							<div className="bg-card/40 border border-border/30 rounded p-3">
-								<div className="text-[10px] font-bold text-foreground/70 uppercase mb-2">
-									Headers ({entry.request.headers.length})
-								</div>
-								<div
-									className={cn(
-										"space-y-1 overflow-auto",
-										!isFocusMode && "max-h-[20vh]"
-									)}
-								>
-									{entry.request.headers.map((header, i) => (
-										<div
-											key={i}
-											className="flex items-start gap-2 text-[10px]"
-										>
-											<span className="font-mono font-medium text-primary min-w-30">
-												{header.name}:
-											</span>
-											<span className="font-mono text-foreground/80 break-all">
-												{header.value}
-											</span>
-										</div>
-									))}
-								</div>
-							</div>
-
-							{entry.request.postData &&
-								entry.request.postData.text && (
-									<div className="bg-card/40 border border-border/30 rounded p-3">
-										<div className="text-[10px] font-bold text-foreground/70 uppercase mb-2">
-											Request Body
-										</div>
-										<pre
-											className={cn(
-												"font-mono text-[10px] text-foreground/80 whitespace-pre-wrap break-all overflow-auto",
-												!isFocusMode && "max-h-[20vh]"
-											)}
-										>
-											{entry.request.postData.text}
-										</pre>
+			{activeFormat !== "docs" &&
+				activeFormat !== "txt" &&
+				activeFormat !== "har" &&
+				activeFormat !== "openapi" && (
+					<>
+						<DetailSection
+							title="Request Details"
+							icon={
+								<Terminal className="w-3.5 h-3.5 text-blue-500" />
+							}
+						>
+							<div className="space-y-2">
+								<div className="bg-card/40 border border-border/30 rounded p-3">
+									<div className="text-[10px] font-bold text-foreground/70 uppercase mb-1">
+										Method & URL
 									</div>
-								)}
-						</div>
-					</DetailSection>
+									<div className="font-mono text-xs text-foreground break-all">
+										{entry.request.method}{" "}
+										{entry.request.url}
+									</div>
+								</div>
 
-					<div className="bg-blue-500/10 border border-blue-500/30 rounded p-3">
-						<div className="flex items-start gap-2">
-							<Terminal className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
-							<div className="space-y-1">
-								<p className="text-xs text-blue-400 font-medium">
-									How to use these exports
-								</p>
-								<ul className="text-[10px] text-blue-400/80 space-y-0.5 list-disc list-inside">
-									<li>
-										<strong>cURL:</strong> Copy and paste
-										into your terminal
-									</li>
-									<li>
-										<strong>Fetch API:</strong> Use in
-										JavaScript/TypeScript code
-									</li>
-									<li>
-										<strong>PowerShell:</strong> Run in
-										Windows PowerShell
-									</li>
-								</ul>
+								<div className="bg-card/40 border border-border/30 rounded p-3">
+									<div className="text-[10px] font-bold text-foreground/70 uppercase mb-2">
+										Headers ({entry.request.headers.length})
+									</div>
+									<div
+										className={cn(
+											"space-y-1 overflow-auto",
+											!isFocusMode && "max-h-[20vh]"
+										)}
+									>
+										{entry.request.headers.map(
+											(header, i) => (
+												<div
+													key={i}
+													className="flex items-start gap-2 text-[10px]"
+												>
+													<span className="font-mono font-medium text-primary min-w-30">
+														{header.name}:
+													</span>
+													<span className="font-mono text-foreground/80 break-all">
+														{header.value}
+													</span>
+												</div>
+											)
+										)}
+									</div>
+								</div>
+
+								{entry.request.postData &&
+									entry.request.postData.text && (
+										<div className="bg-card/40 border border-border/30 rounded p-3">
+											<div className="text-[10px] font-bold text-foreground/70 uppercase mb-2">
+												Request Body
+											</div>
+											<pre
+												className={cn(
+													"font-mono text-[10px] text-foreground/80 whitespace-pre-wrap break-all overflow-auto",
+													!isFocusMode &&
+														"max-h-[20vh]"
+												)}
+											>
+												{entry.request.postData.text}
+											</pre>
+										</div>
+									)}
+							</div>
+						</DetailSection>
+
+						<div className="bg-blue-500/10 border border-blue-500/30 rounded p-3">
+							<div className="flex items-start gap-2">
+								<Terminal className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+								<div className="space-y-1">
+									<p className="text-xs text-blue-400 font-medium">
+										How to use these exports
+									</p>
+									<ul className="text-[10px] text-blue-400/80 space-y-0.5 list-disc list-inside">
+										<li>
+											<strong>cURL:</strong> Copy and
+											paste into your terminal
+										</li>
+										<li>
+											<strong>Fetch API:</strong> Use in
+											JavaScript/TypeScript code
+										</li>
+										<li>
+											<strong>PowerShell:</strong> Run in
+											Windows PowerShell
+										</li>
+									</ul>
+								</div>
 							</div>
 						</div>
-					</div>
-				</>
-			)}
+					</>
+				)}
 		</div>
 	);
 }
