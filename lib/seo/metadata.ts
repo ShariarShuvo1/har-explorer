@@ -3,74 +3,77 @@ import {
 	SITE_NAME,
 	SITE_TITLE,
 	SITE_DESCRIPTION,
-	KEYWORDS,
+	SITE_URL,
 	CREATOR_NAME,
-	REPOSITORY_URL,
+	CREATOR_GITHUB_URL,
 } from "./constants";
 
-export function generateMetadata(baseUrl: string): Metadata {
-	const canonicalUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+const GOOGLE_SITE_VERIFICATION = "fsvwCxiT-jgIJrC7_to1MJ3P48M_ihUAwd7WDBeCVMw";
 
+/**
+ * Root metadata; relative URLs resolve against `metadataBase` (SITE_URL).
+ * Icons, the web manifest and the Open Graph / Twitter images come from the
+ * file conventions in app/ (icon.svg, manifest.ts, opengraph-image.tsx, ...).
+ */
+export function buildMetadata(): Metadata {
 	return {
-		metadataBase: new URL(canonicalUrl),
+		metadataBase: new URL(SITE_URL),
 		title: {
 			default: SITE_TITLE,
 			template: `%s | ${SITE_NAME}`,
 		},
 		description: SITE_DESCRIPTION,
-		keywords: KEYWORDS,
-		authors: [{ name: CREATOR_NAME }],
-		creator: CREATOR_NAME,
-		publisher: CREATOR_NAME,
 		applicationName: SITE_NAME,
-		generator: "Next.js",
-		referrer: "origin-when-cross-origin",
+		authors: [{ name: CREATOR_NAME, url: CREATOR_GITHUB_URL }],
+		creator: CREATOR_NAME,
+		category: "technology",
+		alternates: {
+			canonical: "/",
+		},
 		robots: {
 			index: true,
 			follow: true,
-			nocache: false,
 			googleBot: {
-				index: true,
-				follow: true,
-				noimageindex: false,
-				"max-video-preview": -1,
 				"max-image-preview": "large",
-				"max-snippet": -1,
 			},
 		},
-		alternates: {
-			canonical: canonicalUrl,
+		openGraph: {
+			type: "website",
+			url: "/",
+			siteName: SITE_NAME,
+			title: SITE_TITLE,
+			description: SITE_DESCRIPTION,
+			locale: "en_US",
 		},
-		category: "Developer Tools",
-		classification: "Web Development Tool",
-		other: {
-			"revisit-after": "7 days",
-			rating: "General",
-			"dc.title": SITE_TITLE,
-			"dc.description": SITE_DESCRIPTION,
-			"dc.creator": CREATOR_NAME,
-			"dc.subject":
-				"HAR file analysis, HAR to API documentation, HAR to Markdown, HTTP Archive converter, Network debugging, API documentation generator, Response schema analyzer",
-			"dc.format": "text/html",
-			"dc.language": "en",
-			"og:url": canonicalUrl,
-			"og:type": "website",
-			"og:site_name": SITE_NAME,
-			"og:title": SITE_TITLE,
-			"og:description": SITE_DESCRIPTION,
-			"github:url": REPOSITORY_URL,
+		twitter: {
+			card: "summary_large_image",
+			title: SITE_TITLE,
+			description: SITE_DESCRIPTION,
+		},
+		// Request data is full of numbers and addresses; don't let iOS turn them into links.
+		formatDetection: {
+			telephone: false,
+			email: false,
+			address: false,
+		},
+		verification: {
+			google: GOOGLE_SITE_VERIFICATION,
 		},
 	};
 }
 
+/** Matches the light and dark `--background` tokens in globals.css. */
+export const THEME_COLORS = {
+	light: "#fbfcfd",
+	dark: "#090c11",
+};
+
 export const viewport: Viewport = {
 	width: "device-width",
 	initialScale: 1,
-	minimumScale: 1,
-	maximumScale: 5,
 	themeColor: [
-		{ media: "(prefers-color-scheme: light)", color: "#ffffff" },
-		{ media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+		{ media: "(prefers-color-scheme: light)", color: THEME_COLORS.light },
+		{ media: "(prefers-color-scheme: dark)", color: THEME_COLORS.dark },
 	],
 	colorScheme: "light dark",
 };

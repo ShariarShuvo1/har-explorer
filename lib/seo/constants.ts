@@ -1,477 +1,89 @@
 export const CREATOR_NAME = "Shariar Islam Shuvo";
+export const CREATOR_GITHUB_URL = "https://github.com/ShariarShuvo1";
 
 export const REPOSITORY_URL = "https://github.com/ShariarShuvo1/har-explorer";
 export const SITE_NAME = "HAR Explorer";
 
 export const GA_MEASUREMENT_ID = "G-RY149KJ0QL";
 
-export const SITE_TITLE = "HAR Explorer - Convert HAR to API Docs & Markdown";
+const DEFAULT_SITE_URL = "https://har-explorer.vercel.app";
 
+/**
+ * Canonical origin without a trailing slash. `PUBLIC_DEPLOYED_URL` may be set
+ * with or without a protocol; anything unparsable falls back to the default.
+ */
+function resolveSiteUrl(value: string | undefined): string {
+	const trimmed = value?.trim();
+	if (!trimmed) return DEFAULT_SITE_URL;
+	const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+	try {
+		const url = new URL(withProtocol);
+		return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+	} catch {
+		return DEFAULT_SITE_URL;
+	}
+}
+
+export const SITE_URL = resolveSiteUrl(process.env.PUBLIC_DEPLOYED_URL);
+
+export const SITE_TITLE = "HAR Explorer – Free Online HAR File Viewer & Analyzer";
+
+/** Kept under ~160 characters so search results show it in full. */
 export const SITE_DESCRIPTION =
-	"Free online HAR file viewer, analyzer and converter. Generate API documentation from HAR files, convert HAR to Markdown/TXT.";
+	"View and analyze HAR files privately in your browser. Waterfall timeline, performance insights, issue detection, HAR comparison and OpenAPI export.";
 
-export const KEYWORDS = [
-	"HAR file viewer",
-	"HAR analyzer",
-	"HAR editor",
-	"HAR converter",
-	"HAR to API docs",
-	"HAR to API documentation",
-	"HAR to Markdown",
-	"HAR to MD",
-	"HAR to TXT",
-	"HAR to text",
-	"HAR to documentation",
-	"HAR to OpenAPI",
-	"HAR to OpenAPI spec",
-	"HAR to Swagger",
-	"HAR converter to OpenAPI",
-	"convert HAR to OpenAPI",
-	"convert HAR to Swagger",
-	"generate OpenAPI from HAR",
-	"OpenAPI spec generator",
-	"Swagger spec generator",
-	"OpenAPI schema from network requests",
-	"HAR file converter",
-	"convert HAR to Markdown",
-	"convert HAR to API docs",
-	"generate API docs from HAR",
-	"HAR export tool",
-	"HAR API documentation generator",
-	"API documentation from network requests",
-	"HTTP Archive to Markdown",
-	"HTTP Archive to API docs",
-	"HTTP Archive converter",
-	"HTTP Archive viewer",
-	"HTTP Archive analyzer",
-	"network traffic to API docs",
-	"network traffic analyzer",
-	"HTTP request analyzer",
-	"HTTP response schema analyzer",
-	"response schema detector",
-	"API schema generator",
-	"web performance analyzer",
-	"network debugging tool",
-	"HAR file reader",
-	"HAR file parser",
-	"API request viewer",
-	"API request documentation",
-	"API endpoint documentation",
-	"REST API documentation generator",
-	"GraphQL request analyzer",
-	"network waterfall chart",
-	"waterfall diagram viewer",
-	"waterfall gaps detector",
-	"request timing analysis",
-	"timing anomaly detection",
-	"DNS timing analyzer",
-	"SSL timing analyzer",
-	"TLS handshake analysis",
-	"connection timing breakdown",
-	"HTTP response viewer",
-	"web developer tools",
-	"network performance debugging",
-	"browser network analysis",
-	"network traffic inspection",
-	"HTTP headers viewer",
-	"request response viewer",
-	"API debugging tool",
-	"network latency analyzer",
-	"waterfall diagram",
-	"HTTP timing analysis",
-	"network request inspector",
-	"web traffic analyzer",
-	"network performance tool",
-	"request timeline viewer",
-	"timeline comparison tool",
-	"request comparison viewer",
-	"HTTP status code analyzer",
-	"network bandwidth analyzer",
-	"bandwidth timeline visualization",
-	"third party request analyzer",
-	"third party impact analysis",
-	"cookie analyzer",
-	"large cookie detector",
-	"SSL certificate viewer",
-	"TLS certificate inspector",
-	"security headers analyzer",
-	"CORS issue detector",
-	"CORS error analyzer",
-	"mixed content detector",
-	"mixed content analyzer",
-	"cache analysis tool",
-	"cache header analyzer",
-	"duplicate request detector",
-	"redirect chain analyzer",
-	"redirect detector",
-	"failed request analyzer",
-	"HTTP error detector",
-	"4xx error analyzer",
-	"5xx error analyzer",
-	"performance pattern analyzer",
-	"sequential loading detector",
-	"API batching analyzer",
-	"priority mismatch detector",
-	"resource priority analyzer",
-	"connection reuse analyzer",
-	"HTTP connection analysis",
-	"initiator chain analyzer",
-	"request initiator analysis",
-	"resource sequence analyzer",
-	"server location analyzer",
-	"geographic server analysis",
-	"protocol analyzer",
-	"HTTP version analyzer",
-	"HTTP/1.1 vs HTTP/2 analysis",
-	"HTTP/3 analyzer",
-	"transfer encoding analyzer",
-	"compression analyzer",
-	"gzip analyzer",
-	"brotli analyzer",
-	"image optimization analyzer",
-	"image size analyzer",
-	"image format analyzer",
-	"export HAR to markdown",
-	"export HAR to text",
-	"export filtered HAR",
-	"HAR filter export",
-	"bookmarked requests export",
-	"API request documentation tool",
-	"request response documentation",
-	"schema analyzer",
-	"JSON response analyzer",
-	"API response schema",
-	"automatic API documentation",
-	"generate docs from HAR",
-	"network capture to docs",
-	"DevTools HAR export",
-	"Chrome DevTools HAR",
-	"Firefox HAR export",
-	"Safari HAR export",
-	"Edge HAR export",
-	"free HAR viewer",
-	"online HAR analyzer",
-	"online HAR converter",
-	"browser HAR tool",
-	"client-side HAR viewer",
-	"client-side HAR converter",
-	"privacy-focused HAR tool",
-	"HAR documentation generator",
-	"HAR markdown export",
-	"HAR text export",
-	"network requests to markdown",
-	"API catalog from HAR",
-	"endpoint documentation generator",
-	"domain analysis tool",
-	"host filtering tool",
-	"method filtering tool",
-	"status code filtering",
-	"size filtering tool",
-	"duration filtering tool",
-	"header search tool",
-	"request filtering tool",
-	"advanced HAR filtering",
-	"HAR bookmarking tool",
-	"focus mode viewer",
-	"single request viewer",
-	"request details inspector",
-	"timing waterfall",
-	"network timeline chart",
-	"resource type filter",
-	"XHR request viewer",
-	"fetch request analyzer",
-	"document request analyzer",
-	"stylesheet analyzer",
-	"script analyzer",
-	"font analyzer",
-	"media analyzer",
-	"WebSocket analyzer",
-	"manifest analyzer",
+export const SITE_TAGLINE =
+	"Inspect, analyze, compare and export HAR files, entirely in your browser.";
+
+const FEATURE_LIST = [
+	"Request list with waterfall timeline",
+	"Request details: headers, payload, response, timing, cache and security",
+	"Request editing with undo",
+	"Performance analytics",
+	"Automatic issue and pattern detection",
+	"Connection, priority and server statistics",
+	"Compare two HAR files",
+	"Export to Markdown, plain text, OpenAPI 3.0 or HAR",
+	"Copy requests as cURL, fetch or PowerShell",
+	"Bookmarks, filters and command palette",
+	"Runs locally: files are never uploaded",
 ];
 
-export const FEATURES = [
-	{
-		name: "HAR File Viewing",
-		description:
-			"View and browse HTTP Archive files with detailed request and response information",
-	},
-	{
-		name: "Network Timeline",
-		description:
-			"Interactive waterfall chart showing request timings and dependencies",
-	},
-	{
-		name: "Analytics Dashboard",
-		description:
-			"Comprehensive analytics including bandwidth timeline, protocol analysis, and third-party impact",
-	},
-	{
-		name: "Pattern Detection",
-		description:
-			"Automatic detection of performance issues like duplicate requests, large cookies, and mixed content",
-	},
-	{
-		name: "Statistics View",
-		description:
-			"Detailed statistics including domain analysis, connection reuse, and transfer efficiency",
-	},
-	{
-		name: "Entry Details",
-		description:
-			"Deep inspection of individual requests with headers, timings, security, and cache information",
-	},
-	{
-		name: "HAR to API Documentation",
-		description:
-			"Generate beautifully structured API documentation from HAR files with automatic response schema analysis, request/response examples, and endpoint cataloging",
-	},
-	{
-		name: "HAR to Markdown Export",
-		description:
-			"Convert HAR files to Markdown format with detailed request information, headers, timings, and responses for documentation purposes",
-	},
-	{
-		name: "HAR to OpenAPI/Swagger Export",
-		description:
-			"Convert HAR files to industry-standard OpenAPI 3.0 specifications for API documentation, SDK generation, and tool integration. Compatible with Swagger Editor, Postman, and OpenAPI Generator.",
-	},
-	{
-		name: "HAR to Text Export",
-		description:
-			"Export HAR data to plain text format for easy sharing, reporting, and analysis",
-	},
-	{
-		name: "Filtered HAR Export",
-		description:
-			"Export filtered and bookmarked entries as a new HAR file for focused analysis and sharing",
-	},
-	{
-		name: "Response Schema Analyzer",
-		description:
-			"Automatically detect and analyze JSON response schemas to generate structured API documentation with data types and field descriptions",
-	},
-	{
-		name: "Bookmarking",
-		description: "Bookmark important requests for quick access and export",
-	},
-	{
-		name: "Advanced Filtering",
-		description:
-			"Filter by resource type, status code, size, duration, domain, headers, and HTTP version",
-	},
-	{
-		name: "Keyboard Shortcuts",
-		description:
-			"Efficient navigation with comprehensive keyboard shortcuts",
-	},
-	{
-		name: "Dark Mode",
-		description:
-			"Full dark and light theme support with system preference detection",
-	},
-	{
-		name: "Privacy First",
-		description:
-			"All processing happens client-side. No data is uploaded to any server",
-	},
-];
-
+/** schema.org graph for the home page: the site, the app and its author. */
 export const STRUCTURED_DATA = {
 	"@context": "https://schema.org",
-	"@type": "WebApplication",
-	name: SITE_NAME,
-	description: SITE_DESCRIPTION,
-	creator: {
-		"@type": "Person",
-		name: CREATOR_NAME,
-	},
-	publisher: {
-		"@type": "Person",
-		name: CREATOR_NAME,
-	},
-	url: REPOSITORY_URL,
-	codeRepository: REPOSITORY_URL,
-	applicationCategory: "DeveloperApplication",
-	operatingSystem: "Any",
-	offers: {
-		"@type": "Offer",
-		price: "0",
-		priceCurrency: "USD",
-	},
-	featureList: [
-		"HAR file viewing and analysis",
-		"Convert HAR to API documentation with schema analysis",
-		"Export HAR to OpenAPI 3.0 specification",
-		"Generate Swagger/OpenAPI specs from network traffic",
-		"OpenAPI schema generation from HAR files",
-		"Export HAR to Markdown format",
-		"Export HAR to plain text format",
-		"Export filtered HAR files",
-		"Export bookmarked requests",
-		"Automatic response schema detection and analysis",
-		"Generate API endpoint documentation from network requests",
-		"Interactive network waterfall timeline",
-		"Timeline comparison mode",
-		"Waterfall gap detection",
-		"Timing anomaly detection",
-		"DNS and SSL/TLS timing breakdown",
-		"Bandwidth timeline visualization",
-		"Performance analytics dashboard",
-		"Protocol analysis (HTTP/1.1, HTTP/2, HTTP/3)",
-		"Third-party impact analysis",
-		"Image optimization analysis",
-		"Pattern detection for performance issues",
-		"Duplicate request detection",
-		"Failed request analysis (4xx/5xx errors)",
-		"Redirect chain analysis",
-		"CORS issue detection",
-		"Mixed content detection",
-		"Large cookie detection",
-		"API batching opportunities",
-		"Sequential loading pattern detection",
-		"Priority mismatch detection",
-		"Missing cache header detection",
-		"Domain and host analysis",
-		"Connection reuse analysis",
-		"Initiator chain analysis",
-		"Resource priority analysis",
-		"Transfer encoding and compression analysis",
-		"Server location analysis",
-		"Resource sequence visualization",
-		"Request statistics and insights",
-		"Advanced filtering by type, status, size, duration",
-		"Method filtering (GET, POST, PUT, DELETE, etc.)",
-		"Header search and filtering",
-		"Domain and host filtering",
-		"HTTP version filtering",
-		"Bookmarking system for important requests",
-		"Focus mode for detailed single request inspection",
-		"HTTP headers and response viewer",
-		"Request/response payload inspection",
-		"Security tab with certificate and header analysis",
-		"Cache information viewer",
-		"Timing breakdown visualization",
-		"Multiple view modes (List, Analytics, Patterns, Statistics, Compare)",
-		"Virtualized list for large HAR files",
-		"Keyboard shortcuts for efficient navigation",
-		"Drag and drop HAR file upload",
-		"Dark and light themes",
-		"Privacy-focused client-side processing",
-		"No server uploads - all data stays in browser",
-		"No registration or login required",
-	],
-	browserRequirements: "Requires a modern browser with JavaScript enabled",
-	softwareVersion: "1.0.0",
-	releaseNotes: "Initial release with full HAR analysis capabilities",
-};
-
-export const FAQ_STRUCTURED_DATA = {
-	"@context": "https://schema.org",
-	"@type": "FAQPage",
-	mainEntity: [
+	"@graph": [
 		{
-			"@type": "Question",
-			name: "What is a HAR file?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "A HAR (HTTP Archive) file is a JSON-formatted file that records all network requests made by a web browser. It contains detailed information about each HTTP request and response, including URLs, headers, timing data, and response content.",
-			},
+			"@type": "WebSite",
+			"@id": `${SITE_URL}/#website`,
+			url: `${SITE_URL}/`,
+			name: SITE_NAME,
+			description: SITE_DESCRIPTION,
+			inLanguage: "en",
+			publisher: { "@id": `${SITE_URL}/#author` },
 		},
 		{
-			"@type": "Question",
-			name: "How do I create a HAR file?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "In Chrome: Open DevTools (F12), go to Network tab, perform the actions you want to record, right-click on the requests list, and select 'Save all as HAR with content'. In Firefox: Open DevTools, go to Network tab, right-click and select 'Save All As HAR'.",
-			},
+			"@type": "WebApplication",
+			"@id": `${SITE_URL}/#app`,
+			name: SITE_NAME,
+			url: `${SITE_URL}/`,
+			description: SITE_DESCRIPTION,
+			image: `${SITE_URL}/opengraph-image`,
+			applicationCategory: "DeveloperApplication",
+			applicationSubCategory: "Network analysis",
+			operatingSystem: "Any",
+			browserRequirements: "Requires JavaScript and a modern web browser",
+			isAccessibleForFree: true,
+			offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+			featureList: FEATURE_LIST,
+			author: { "@id": `${SITE_URL}/#author` },
+			sameAs: [REPOSITORY_URL],
 		},
 		{
-			"@type": "Question",
-			name: "Is my data secure with HAR Explorer?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "Yes, HAR Explorer processes all data entirely in your browser. No data is ever uploaded to any server. Your HAR files remain completely private and secure on your device.",
-			},
-		},
-		{
-			"@type": "Question",
-			name: "What can I analyze with HAR Explorer?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "HAR Explorer lets you analyze request timings, identify performance bottlenecks, detect duplicate requests, view headers and cookies, analyze third-party impact, check for mixed content issues, and export filtered data for documentation or sharing.",
-			},
-		},
-		{
-			"@type": "Question",
-			name: "Can I convert HAR files to API documentation?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "Yes! HAR Explorer can generate beautifully structured API documentation from HAR files. It automatically analyzes response schemas, extracts request/response examples, catalogs endpoints, and creates comprehensive API documentation. This is perfect for documenting APIs by capturing network traffic.",
-			},
-		},
-		{
-			"@type": "Question",
-			name: "What export formats does HAR Explorer support?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "HAR Explorer supports multiple export formats: (1) API Documentation with automatic schema analysis, (2) Markdown format for documentation and reports, (3) Plain text format for easy sharing, and (4) Filtered HAR files containing only selected requests. All exports can include bookmarked entries and filtered data.",
-			},
-		},
-		{
-			"@type": "Question",
-			name: "How does the response schema analyzer work?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "The response schema analyzer automatically inspects JSON responses in your HAR file, detects data types, identifies nested structures, and generates structured schema documentation. This makes it easy to understand API response formats and create accurate API documentation without manual analysis.",
-			},
-		},
-		{
-			"@type": "Question",
-			name: "Can I export HAR to Markdown?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "Yes, HAR Explorer can convert HAR files to Markdown format. The export includes request URLs, methods, status codes, headers, timings, and response data in a well-formatted Markdown document, perfect for technical documentation, bug reports, or sharing with team members.",
-			},
-		},
-		{
-			"@type": "Question",
-			name: "Can I convert HAR to OpenAPI specification?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "Yes! HAR Explorer can convert HAR files to OpenAPI 3.0 specifications. The converter analyzes your API endpoints, generates schemas from request/response data, and creates a standards-compliant OpenAPI spec. You can then import it into Swagger Editor, Postman, or use OpenAPI Generator to create client SDKs. This works for both individual API endpoints and bulk exports with endpoint deduplication.",
-			},
-		},
-		{
-			"@type": "Question",
-			name: "What are the benefits of OpenAPI export?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "OpenAPI (formerly Swagger) is the industry standard for API documentation. By converting HAR to OpenAPI, you can: (1) Generate interactive API documentation with Swagger UI, (2) Create client SDKs automatically with OpenAPI Generator, (3) Import specs into Postman for API testing, (4) Enable IDE integration and code generation, (5) Share standardized API specifications with your team, (6) Use with popular API management and documentation tools.",
-			},
-		},
-		{
-			"@type": "Question",
-			name: "Can I export all requests or just unique endpoints?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "HAR Explorer offers flexible OpenAPI export options. You can enable 'Unique Endpoints' mode to deduplicate and merge similar API calls into clean endpoint definitions with merged schemas, or disable it to export every individual request as separate operations. You can also select which specific endpoints to include in the export using the sidebar.",
-			},
-		},
-		{
-			"@type": "Question",
-			name: "How does HAR Explorer handle API schemas in OpenAPI export?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "When exporting to OpenAPI, HAR Explorer automatically analyzes request and response payloads to generate JSON schemas. It detects data types, identifies nested structures, recognizes special formats (UUID, email, date, etc.), and merges schemas from multiple requests to create comprehensive endpoint definitions. This means your OpenAPI spec includes accurate request/response schema definitions without manual work.",
-			},
-		},
-		{
-			"@type": "Question",
-			name: "What information is included in the OpenAPI export?",
-			acceptedAnswer: {
-				"@type": "Answer",
-				text: "HAR Explorer's OpenAPI export includes: (1) Complete endpoint paths and HTTP methods, (2) Operation IDs and tags for organization, (3) Path parameters and query parameters, (4) Request body schemas with data types, (5) Response schemas for different status codes, (6) Server URLs extracted from your HAR file, (7) Parameter descriptions and examples from actual requests.",
-			},
+			"@type": "Person",
+			"@id": `${SITE_URL}/#author`,
+			name: CREATOR_NAME,
+			url: CREATOR_GITHUB_URL,
 		},
 	],
 };

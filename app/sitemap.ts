@@ -1,16 +1,8 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/seo/constants";
 
+// The app is a single page. No lastModified: a build-time date would claim the
+// page changes on every deploy, which search engines learn to ignore.
 export default function sitemap(): MetadataRoute.Sitemap {
-	const baseUrl =
-		process.env.PUBLIC_DEPLOYED_URL || "https://har-explorer.vercel.app";
-	const canonicalUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-
-	return [
-		{
-			url: canonicalUrl,
-			lastModified: new Date(),
-			changeFrequency: "weekly",
-			priority: 1,
-		},
-	];
+	return [{ url: `${SITE_URL}/` }];
 }

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 32 1089 1089">
+	<style>
+		.base { fill: #443e86; }
+		.accent { fill: #5ed0ea; }
+		@media (prefers-color-scheme: dark) {
+			.base { fill: #9a93f0; }
+		}
+	</style>
+	<rect class="base" x="65" y="232" width="512" height="111" rx="55.5" />
+	<rect class="accent" x="257" y="425" width="510" height="111" rx="55.5" />
+	<rect class="base" x="444" y="618" width="475" height="111" rx="55.5" />
+	<rect class="base" x="577" y="811" width="512" height="111" rx="55.5" />
+</svg>

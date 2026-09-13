@@ -1,100 +1,31 @@
 import { create } from "zustand";
-import type { TabId } from "@/components/har-viewer/entry-details/types";
+import type { HARData, HAREntry, ResourceType } from "@/lib/har-types";
+import { filterEntryIndices, groupKeyFor } from "@/lib/filter-entries";
 
-export interface HAREntry {
-	_connectionId?: string;
-	_initiator?: unknown;
-	_priority?: string;
-	_resourceType?: string;
-	cache?: Record<string, unknown>;
-	connection?: string;
-	request: {
-		method: string;
-		url: string;
-		httpVersion: string;
-		headers: Array<{ name: string; value: string }>;
-		queryString: Array<{ name: string; value: string }>;
-		cookies: Array<Record<string, unknown>>;
-		headersSize: number;
-		bodySize: number;
-		postData?: {
-			mimeType: string;
-			text?: string;
-			params?: Array<Record<string, unknown>>;
-		};
-	};
-	response: {
-		status: number;
-		statusText: string;
-		httpVersion: string;
-		headers: Array<{ name: string; value: string }>;
-		cookies: Array<Record<string, unknown>>;
-		content: {
-			size: number;
-			mimeType: string;
-			compression?: number;
-			text?: string;
-		};
-		redirectURL: string;
-		headersSize: number;
-		bodySize: number;
-		_transferSize?: number;
-		_error?: unknown;
-		_fetchedViaServiceWorker?: boolean;
-	};
-	serverIPAddress?: string;
-	startedDateTime: string;
-	time: number;
-	timings: {
-		blocked: number;
-		dns: number;
-		ssl: number;
-		connect: number;
-		send: number;
-		wait: number;
-		receive: number;
-		[key: string]: number;
-	};
-}
+export type {
+	HARCookie,
+	HARData,
+	HAREntry,
+	HARLog,
+	HARNameValue,
+	HARPage,
+	ResourceType,
+} from "@/lib/har-types";
+export { getResourceType } from "@/lib/resource-type";
 
-export interface HARLog {
-	version: string;
-	creator: {
-		name: string;
-		version: string;
-	};
-	pages?: Array<Record<string, unknown>>;
-	entries: HAREntry[];
-}
+export type ViewMode = "requests" | "analytics" | "patterns" | "statistics" | "compare" | "export";
 
-export interface HARData {
-	log: HARLog;
-}
+export type SortBy = "started" | "time" | "size" | "status" | "method" | "url";
 
-export type ResourceType =
-	| "all"
-	| "fetch"
-	| "doc"
-	| "css"
-	| "js"
-	| "font"
-	| "img"
-	| "media"
-	| "manifest"
-	| "ws"
-	| "wasm"
-	| "other";
+export type GroupBy = "none" | "domain" | "type";
 
-export type ViewMode =
-	| "list"
-	| "analytics"
-	| "patterns"
-	| "statistics"
-	| "export";
+export type ComparisonMode = "side-by-side" | "diff";
 
-export type TimelineViewMode = "detailed" | "overview";
+export type ExportScope = "all" | "selected" | "filtered" | "bookmarked";
 
-export type TimelineGroupMode = "none" | "domain" | "type";
+/** Sections of the request details pane, in display order. */
+export type DetailTab =
+	"overview" | "headers" | "payload" | "response" | "timing" | "cache" | "security" | "code";
 
 export interface AdvancedFilters {
 	statusCodes: number[];
@@ -118,560 +49,594 @@ export interface Bookmark {
 	createdAt: string;
 }
 
-interface HARStore {
+export const LIST_COLUMNS = ["method", "status", "type", "size", "time", "waterfall"] as const;
+export type ListColumn = (typeof LIST_COLUMNS)[number];
+
+/** A time window (ms offsets from the first request) the waterfall is zoomed to. */
+export interface TimeRange {
+	start: number;
+	end: number;
+}
+
+export const createDefaultAdvancedFilters = (): AdvancedFilters => ({
+	statusCodes: [],
+	statusRanges: [],
+	sizeMin: null,
+	sizeMax: null,
+	durationMin: null,
+	durationMax: null,
+	domainPattern: "",
+	pathPattern: "",
+	headerMatches: [],
+	httpVersions: [],
+	methodFilters: [],
+});
+
+interface HistorySnapshot {
+	label: string;
 	harData: HARData | null;
 	entries: HAREntry[];
+	bookmarks: Map<number, Bookmark>;
+	isDirty: boolean;
+	/** Sorted indices removed by this step, for re-mapping later bookmarks on undo. */
+	deleted?: number[];
+}
+
+const MAX_HISTORY = 30;
+
+interface HARStore {
+	harData: HARData | null;
+	fileName: string | null;
+	/** True once entries were edited or deleted since the file was loaded. */
+	isDirty: boolean;
+	entries: HAREntry[];
+
+	viewMode: ViewMode;
+
 	selectedEntries: Set<number>;
-	visibleEntryIndices: number[];
-	expandedEntry: number | null;
-	focusedEntry: number | null;
 	lastSelectedIndex: number | null;
-	activeTab: TabId;
-	showDeleteConfirm: boolean;
-	filterText: string;
-	sortBy: "time" | "size" | "status" | "method" | "url";
+	/** Entry indices in the order the request list currently displays them. */
+	visibleEntryIndices: number[];
+
+	/** Entry shown in the details pane. */
+	activeEntry: number | null;
+	detailTab: DetailTab;
+	detailsMaximized: boolean;
+	/** One-shot request for the request list to scroll an entry into view. */
+	scrollToIndex: number | null;
+
+	sortBy: SortBy;
 	sortOrder: "asc" | "desc";
 	searchText: string;
 	resourceTypeFilter: ResourceType;
-	showTimeline: boolean;
-	scrollToIndex: number | null;
-	viewMode: ViewMode;
-	secondaryHarData: HARData | null;
-	comparisonMode: "side-by-side" | "diff" | null;
 	advancedFilters: AdvancedFilters;
-	showAdvancedFilters: boolean;
-	bookmarks: Map<number, Bookmark>;
 	showBookmarksOnly: boolean;
-	showBookmarksPanel: boolean;
-	timelineZoom: number;
-	timelineScrollOffset: number;
-	timelineViewMode: TimelineViewMode;
-	timelineGroupMode: TimelineGroupMode;
-	timelineHoveredEntry: number | null;
-	timelineSelectedForComparison: [number, number] | null;
-	expandedDomainGroups: Set<string>;
-	visibleColumns: Set<string>;
+
+	visibleColumns: Set<ListColumn>;
+	groupBy: GroupBy;
+	collapsedGroups: Set<string>;
+	showOverview: boolean;
+	timeRange: TimeRange | null;
+
+	bookmarks: Map<number, Bookmark>;
+
+	secondaryHarData: HARData | null;
+	secondaryFileName: string | null;
+	comparisonMode: ComparisonMode;
+
+	/** Scope the Export view should preselect the next time it opens. */
+	pendingExportScope: ExportScope | null;
+
+	/** Two entries whose timings are compared in a dialog. */
+	timingComparison: [number, number] | null;
 	showKeyboardShortcuts: boolean;
-	setHarData: (data: HARData) => void;
-	updateEntry: (index: number, entry: HAREntry) => void;
+	showCommandPalette: boolean;
+	showBookmarksSheet: boolean;
+	showFiltersPanel: boolean;
+	/** Entries awaiting delete confirmation. */
+	pendingDelete: number[] | null;
+
+	history: HistorySnapshot[];
+
+	setHarData: (data: HARData, fileName?: string | null) => void;
+	clearHarData: () => void;
+	updateEntry: (index: number, entry: HAREntry, label?: string) => void;
 	deleteEntries: (indices: number[]) => void;
+	undo: () => string | null;
+
 	setViewMode: (mode: ViewMode) => void;
-	setSecondaryHarData: (data: HARData | null) => void;
-	setComparisonMode: (mode: "side-by-side" | "diff" | null) => void;
-	setAdvancedFilters: (filters: Partial<AdvancedFilters>) => void;
-	toggleAdvancedFilters: () => void;
-	addBookmark: (
-		entryIndex: number,
-		label: string,
-		color: string,
-		note?: string
-	) => void;
-	removeBookmark: (entryIndex: number) => void;
-	updateBookmark: (entryIndex: number, updates: Partial<Bookmark>) => void;
-	toggleBookmarksOnly: () => void;
-	toggleBookmarksPanel: () => void;
-	setTimelineZoom: (zoom: number) => void;
-	setTimelineScrollOffset: (offset: number) => void;
-	setTimelineViewMode: (mode: TimelineViewMode) => void;
-	setTimelineGroupMode: (mode: TimelineGroupMode) => void;
-	setTimelineHoveredEntry: (index: number | null) => void;
-	setTimelineSelectedForComparison: (
-		indices: [number, number] | null
-	) => void;
-	toggleComparisonEntry: (index: number) => void;
-	toggleDomainGroup: (domain: string) => void;
-	toggleColumn: (column: string) => void;
-	toggleKeyboardShortcuts: () => void;
-	resetAdvancedFilters: () => void;
+	/**
+	 * Shows an entry in the request details pane from any view. Filters that
+	 * would hide the entry are cleared so it is visible in the list.
+	 */
+	openEntry: (index: number, tab?: DetailTab) => void;
+	setActiveEntry: (index: number | null) => void;
+	setDetailTab: (tab: DetailTab) => void;
+	setDetailsMaximized: (maximized: boolean) => void;
+	stepActiveEntry: (delta: 1 | -1) => void;
+	setScrollToIndex: (index: number | null) => void;
+
 	toggleSelection: (index: number) => void;
-	selectEntry: (index: number) => void;
-	deselectEntry: (index: number) => void;
 	selectRange: (index: number) => void;
 	selectAll: () => void;
 	deselectAll: () => void;
 	invertSelection: () => void;
-	setExpandedEntry: (index: number | null) => void;
-	setFocusedEntry: (index: number | null) => void;
-	setActiveTab: (tab: TabId) => void;
-	setShowDeleteConfirm: (show: boolean) => void;
-	setFilterText: (text: string) => void;
-	setSortBy: (sortBy: "time" | "size" | "status" | "method" | "url") => void;
+	setSelection: (indices: number[]) => void;
+	setVisibleEntryIndices: (indices: number[]) => void;
+
+	setSortBy: (sortBy: SortBy) => void;
+	setSortOrder: (sortOrder: "asc" | "desc") => void;
 	toggleSortOrder: () => void;
 	setSearchText: (text: string) => void;
 	setResourceTypeFilter: (filter: ResourceType) => void;
-	toggleTimeline: () => void;
-	setVisibleEntryIndices: (indices: number[]) => void;
-	setLastSelectedIndex: (index: number | null) => void;
-	setScrollToIndex: (index: number | null) => void;
-	clearHarData: () => void;
+	setAdvancedFilters: (filters: Partial<AdvancedFilters>) => void;
+	resetAdvancedFilters: () => void;
+	/** Clears search, resource type, advanced filters and bookmarks-only. */
+	resetAllFilters: () => void;
+	setShowBookmarksOnly: (show: boolean) => void;
+	toggleBookmarksOnly: () => void;
+
+	toggleColumn: (column: ListColumn) => void;
+	setGroupBy: (groupBy: GroupBy) => void;
+	toggleGroup: (key: string) => void;
+	setShowOverview: (show: boolean) => void;
+	setTimeRange: (range: TimeRange | null) => void;
+
+	addBookmark: (entryIndex: number, label: string, color: string, note?: string) => void;
+	removeBookmark: (entryIndex: number) => void;
+	updateBookmark: (entryIndex: number, updates: Partial<Bookmark>) => void;
+
+	setSecondaryHarData: (data: HARData | null, fileName?: string | null) => void;
+	setComparisonMode: (mode: ComparisonMode) => void;
+
+	openExportView: (scope?: ExportScope) => void;
+	consumePendingExportScope: () => ExportScope | null;
+
+	setTimingComparison: (pair: [number, number] | null) => void;
+	setShowKeyboardShortcuts: (show: boolean) => void;
+	setShowCommandPalette: (show: boolean) => void;
+	setShowBookmarksSheet: (show: boolean) => void;
+	setShowFiltersPanel: (show: boolean) => void;
+	requestDelete: (indices: number[]) => void;
+	cancelDelete: () => void;
 }
 
-export function getResourceType(entry: HAREntry): ResourceType {
-	const mimeType = entry.response.content.mimeType.toLowerCase();
-	const url = entry.request.url.toLowerCase();
-
-	if (entry.request.method === "OPTIONS") return "other";
-
-	if (
-		mimeType.includes("application/json") ||
-		mimeType.includes("application/xml") ||
-		url.includes("/api/") ||
-		url.includes("/xhr/")
-	) {
-		return "fetch";
-	}
-
-	if (mimeType.includes("text/html")) return "doc";
-	if (mimeType.includes("text/css") || url.endsWith(".css")) return "css";
-	if (
-		mimeType.includes("javascript") ||
-		mimeType.includes("ecmascript") ||
-		url.endsWith(".js") ||
-		url.endsWith(".mjs")
-	)
-		return "js";
-	if (mimeType.includes("font") || url.match(/\.(woff|woff2|ttf|otf|eot)$/))
-		return "font";
-	if (
-		mimeType.includes("image") ||
-		url.match(/\.(png|jpg|jpeg|gif|svg|webp|ico)$/)
-	)
-		return "img";
-	if (
-		mimeType.includes("video") ||
-		mimeType.includes("audio") ||
-		url.match(/\.(mp4|webm|ogg|mp3|wav)$/)
-	)
-		return "media";
-	if (mimeType.includes("manifest") || url.endsWith("manifest.json"))
-		return "manifest";
-	if (
-		url.includes("websocket") ||
-		url.startsWith("ws://") ||
-		url.startsWith("wss://")
-	)
-		return "ws";
-	if (mimeType.includes("wasm") || url.endsWith(".wasm")) return "wasm";
-
-	return "other";
-}
-
-export const useHarStore = create<HARStore>((set) => ({
-	harData: null,
-	entries: [],
-	selectedEntries: new Set(),
-	visibleEntryIndices: [],
-	expandedEntry: null,
-	focusedEntry: null,
+/** State that belongs to a specific loaded file and must not leak into the next one. */
+const createFileScopedState = () => ({
+	isDirty: false,
+	selectedEntries: new Set<number>(),
 	lastSelectedIndex: null,
-	activeTab: "general",
-	showDeleteConfirm: false,
-	filterText: "",
-	sortBy: "time",
-	sortOrder: "desc",
-	searchText: "",
-	resourceTypeFilter: "all",
-	showTimeline: false,
+	activeEntry: null,
+	detailsMaximized: false,
 	scrollToIndex: null,
-	viewMode: "list",
-	secondaryHarData: null,
-	comparisonMode: null,
-	advancedFilters: {
-		statusCodes: [],
-		statusRanges: [],
-		sizeMin: null,
-		sizeMax: null,
-		durationMin: null,
-		durationMax: null,
-		domainPattern: "",
-		pathPattern: "",
-		headerMatches: [],
-		httpVersions: [],
-		methodFilters: [],
-	},
-	showAdvancedFilters: false,
-	bookmarks: new Map(),
+	searchText: "",
+	resourceTypeFilter: "all" as ResourceType,
+	advancedFilters: createDefaultAdvancedFilters(),
 	showBookmarksOnly: false,
-	showBookmarksPanel: false,
-	timelineZoom: 1,
-	timelineScrollOffset: 0,
-	timelineViewMode: "detailed",
-	timelineGroupMode: "none",
-	timelineHoveredEntry: null,
-	timelineSelectedForComparison: null,
-	expandedDomainGroups: new Set(),
-	visibleColumns: new Set(["method", "status", "url", "time", "size"]),
-	showKeyboardShortcuts: false,
+	collapsedGroups: new Set<string>(),
+	timeRange: null,
+	bookmarks: new Map<number, Bookmark>(),
+	secondaryHarData: null,
+	secondaryFileName: null,
+	pendingExportScope: null,
+	timingComparison: null,
+	showBookmarksSheet: false,
+	showFiltersPanel: false,
+	pendingDelete: null,
+	history: [] as HistorySnapshot[],
+});
 
-	setHarData: (data: HARData) =>
-		set({
-			harData: data,
-			entries: data.log.entries,
-			selectedEntries: new Set(),
-			expandedEntry: null,
-			visibleEntryIndices: data.log.entries.map((_, i) => i),
-			lastSelectedIndex: null,
-		}),
+/** Maps an old index to its position after `sortedDeleted` indices are removed. */
+function shiftIndex(index: number, sortedDeleted: number[]): number {
+	let low = 0;
+	let high = sortedDeleted.length;
+	while (low < high) {
+		const mid = (low + high) >> 1;
+		if (sortedDeleted[mid] < index) low = mid + 1;
+		else high = mid;
+	}
+	return index - low;
+}
 
-	updateEntry: (index: number, entry: HAREntry) =>
-		set((state) => {
-			const newEntries = [...state.entries];
-			newEntries[index] = entry;
-			return {
-				entries: newEntries,
-				harData: state.harData
-					? {
-							...state.harData,
-							log: {
-								...state.harData.log,
-								entries: newEntries,
-							},
-					  }
-					: null,
-			};
-		}),
+/** Old index for an index taken after `sortedDeleted` were removed. */
+function unshiftIndex(index: number, sortedDeleted: number[]): number {
+	let result = index;
+	for (const deleted of sortedDeleted) {
+		if (deleted <= result) result++;
+		else break;
+	}
+	return result;
+}
 
-	deleteEntries: (indices: number[]) =>
-		set((state) => {
-			const newEntries = state.entries.filter(
-				(_, i) => !indices.includes(i)
-			);
+/**
+ * Bookmarks after undoing `step`. Bookmark changes made since then are kept:
+ * undoing an edit leaves bookmarks alone, and undoing a delete restores the
+ * deleted rows' bookmarks while moving current ones back to their old rows.
+ */
+function restoreBookmarks(
+	current: Map<number, Bookmark>,
+	step: HistorySnapshot
+): Map<number, Bookmark> {
+	if (!step.deleted) return current;
+	const deletedSet = new Set(step.deleted);
+	const restored = new Map<number, Bookmark>();
+	step.bookmarks.forEach((bookmark, index) => {
+		if (deletedSet.has(index)) restored.set(index, bookmark);
+	});
+	current.forEach((bookmark, index) => {
+		const old = unshiftIndex(index, step.deleted!);
+		restored.set(old, { ...bookmark, entryIndex: old });
+	});
+	return restored;
+}
 
-			const newBookmarks = new Map(state.bookmarks);
-			indices.forEach((index) => {
-				newBookmarks.delete(index);
-			});
+function withEntries(harData: HARData | null, entries: HAREntry[]) {
+	return harData ? { ...harData, log: { ...harData.log, entries } } : null;
+}
 
-			return {
-				entries: newEntries,
-				harData: state.harData
-					? {
-							...state.harData,
-							log: {
-								...state.harData.log,
-								entries: newEntries,
-							},
-					  }
-					: null,
-				selectedEntries: new Set(),
-				expandedEntry: null,
-				visibleEntryIndices: newEntries.map((_, i) => i),
-				lastSelectedIndex: null,
-				bookmarks: newBookmarks,
-			};
-		}),
+const clearSelection = {
+	selectedEntries: new Set<number>(),
+	lastSelectedIndex: null,
+};
 
-	toggleSelection: (index: number) =>
-		set((state) => {
-			const newSelected = new Set(state.selectedEntries);
-			let lastSelected = state.lastSelectedIndex;
-			if (newSelected.has(index)) {
-				newSelected.delete(index);
-			} else {
-				newSelected.add(index);
-				lastSelected = index;
-			}
-			return {
-				selectedEntries: newSelected,
-				lastSelectedIndex: lastSelected,
-			};
-		}),
+export const useHarStore = create<HARStore>((set, get) => {
+	const snapshot = (label: string, deleted?: number[]): HistorySnapshot[] => {
+		const { harData, entries, bookmarks, isDirty, history } = get();
+		return [
+			...history.slice(-(MAX_HISTORY - 1)),
+			{ label, harData, entries, bookmarks, isDirty, deleted },
+		];
+	};
 
-	selectEntry: (index: number) =>
-		set((state) => {
-			const newSelected = new Set(state.selectedEntries);
-			newSelected.add(index);
-			return {
-				selectedEntries: newSelected,
-				lastSelectedIndex: index,
-			};
-		}),
+	return {
+		harData: null,
+		fileName: null,
+		entries: [],
+		viewMode: "requests",
+		visibleEntryIndices: [],
+		detailTab: "overview",
+		sortBy: "started",
+		sortOrder: "asc",
+		visibleColumns: new Set<ListColumn>(LIST_COLUMNS),
+		groupBy: "none",
+		showOverview: false,
+		comparisonMode: "diff",
+		showKeyboardShortcuts: false,
+		showCommandPalette: false,
+		...createFileScopedState(),
 
-	deselectEntry: (index: number) =>
-		set((state) => {
-			const newSelected = new Set(state.selectedEntries);
-			newSelected.delete(index);
-			return { selectedEntries: newSelected };
-		}),
+		setHarData: (data, fileName = null) =>
+			set({
+				...createFileScopedState(),
+				harData: data,
+				fileName,
+				entries: data.log.entries,
+				visibleEntryIndices: data.log.entries.map((_, i) => i),
+				viewMode: "requests",
+				showCommandPalette: false,
+			}),
 
-	selectRange: (index: number) =>
-		set((state) => {
-			if (!state.visibleEntryIndices.length) {
-				return {};
-			}
+		clearHarData: () =>
+			set({
+				...createFileScopedState(),
+				harData: null,
+				fileName: null,
+				entries: [],
+				visibleEntryIndices: [],
+				viewMode: "requests",
+				showKeyboardShortcuts: false,
+				showCommandPalette: false,
+			}),
 
-			const targetPosition = state.visibleEntryIndices.indexOf(index);
-			if (targetPosition === -1) {
-				const newSelected = new Set(state.selectedEntries);
-				newSelected.add(index);
+		updateEntry: (index, entry, label = "Edit request") =>
+			set((state) => {
+				if (index < 0 || index >= state.entries.length) return {};
+				const history = snapshot(label);
+				const entries = [...state.entries];
+				entries[index] = entry;
 				return {
-					selectedEntries: newSelected,
-					lastSelectedIndex: index,
+					entries,
+					harData: withEntries(state.harData, entries),
+					isDirty: true,
+					history,
 				};
-			}
+			}),
 
-			const anchorIndex =
-				state.lastSelectedIndex !== null &&
-				state.visibleEntryIndices.includes(state.lastSelectedIndex)
-					? state.lastSelectedIndex
-					: state.visibleEntryIndices[targetPosition];
+		deleteEntries: (indices) =>
+			set((state) => {
+				const deleted = new Set(indices.filter((i) => i >= 0 && i < state.entries.length));
+				if (deleted.size === 0) return { pendingDelete: null };
+				const sortedDeleted = [...deleted].sort((a, b) => a - b);
+				const history = snapshot(
+					deleted.size === 1 ? "Delete request" : `Delete ${deleted.size} requests`,
+					sortedDeleted
+				);
+				const remap = (index: number) => shiftIndex(index, sortedDeleted);
+				const remapOrNull = (index: number | null) =>
+					index === null || deleted.has(index) ? null : remap(index);
 
-			const anchorPosition =
-				state.visibleEntryIndices.indexOf(anchorIndex);
-			const start = Math.min(anchorPosition, targetPosition);
-			const end = Math.max(anchorPosition, targetPosition);
-			const range = state.visibleEntryIndices.slice(start, end + 1);
-			const newSelected = new Set(state.selectedEntries);
-			range.forEach((i) => newSelected.add(i));
+				const entries = state.entries.filter((_, i) => !deleted.has(i));
 
-			return {
-				selectedEntries: newSelected,
-				lastSelectedIndex: index,
-			};
-		}),
+				// Bookmarks are keyed by entry index, so every surviving bookmark
+				// moves down by the number of deleted entries before it.
+				const bookmarks = new Map<number, Bookmark>();
+				state.bookmarks.forEach((bookmark, index) => {
+					if (deleted.has(index)) return;
+					const next = remap(index);
+					bookmarks.set(next, { ...bookmark, entryIndex: next });
+				});
 
-	selectAll: () =>
-		set((state) => {
-			const indices = state.visibleEntryIndices;
-			const newSelected = new Set(state.selectedEntries);
-			indices.forEach((i) => newSelected.add(i));
-			const last = indices.length ? indices[indices.length - 1] : null;
-			return {
-				selectedEntries: newSelected,
-				lastSelectedIndex: last ?? state.lastSelectedIndex,
-			};
-		}),
+				const comparison = state.timingComparison;
+				const timingComparison =
+					comparison && !deleted.has(comparison[0]) && !deleted.has(comparison[1])
+						? ([remap(comparison[0]), remap(comparison[1])] as [number, number])
+						: null;
 
-	deselectAll: () =>
-		set({ selectedEntries: new Set(), lastSelectedIndex: null }),
+				return {
+					entries,
+					harData: withEntries(state.harData, entries),
+					isDirty: true,
+					history,
+					...clearSelection,
+					activeEntry: remapOrNull(state.activeEntry),
+					scrollToIndex: null,
+					timingComparison,
+					visibleEntryIndices: state.visibleEntryIndices.filter((i) => !deleted.has(i)).map(remap),
+					bookmarks,
+					showBookmarksOnly: bookmarks.size === 0 ? false : state.showBookmarksOnly,
+					pendingDelete: null,
+				};
+			}),
 
-	invertSelection: () =>
-		set((state) => {
-			const newSelected = new Set<number>();
-			state.visibleEntryIndices.forEach((index) => {
-				if (!state.selectedEntries.has(index)) {
-					newSelected.add(index);
+		undo: () => {
+			const { history } = get();
+			const last = history[history.length - 1];
+			if (!last) return null;
+			set((state) => ({
+				harData: last.harData,
+				entries: last.entries,
+				bookmarks: restoreBookmarks(state.bookmarks, last),
+				isDirty: last.isDirty,
+				history: history.slice(0, -1),
+				...clearSelection,
+				activeEntry:
+					state.activeEntry !== null && state.activeEntry < last.entries.length
+						? state.activeEntry
+						: null,
+				timingComparison: null,
+			}));
+			return last.label;
+		},
+
+		setViewMode: (mode) => set({ viewMode: mode, showCommandPalette: false }),
+
+		openEntry: (index, tab) =>
+			set((state) => {
+				if (index < 0 || index >= state.entries.length) return {};
+				const visible = filterEntryIndices(state).includes(index);
+				const collapsedGroups = new Set(state.collapsedGroups);
+				collapsedGroups.delete(groupKeyFor(state.entries[index], state.groupBy));
+				return {
+					collapsedGroups,
+					viewMode: "requests",
+					activeEntry: index,
+					scrollToIndex: index,
+					showCommandPalette: false,
+					showBookmarksSheet: false,
+					...(tab ? { detailTab: tab } : {}),
+					...(visible
+						? {}
+						: {
+								advancedFilters: createDefaultAdvancedFilters(),
+								searchText: "",
+								resourceTypeFilter: "all" as ResourceType,
+								showBookmarksOnly: false,
+								timeRange: null,
+								collapsedGroups: new Set<string>(),
+							}),
+				};
+			}),
+
+		setActiveEntry: (index) =>
+			set((state) => ({
+				activeEntry: index,
+				detailsMaximized: index === null ? false : state.detailsMaximized,
+			})),
+
+		setDetailTab: (tab) => set({ detailTab: tab }),
+
+		setDetailsMaximized: (maximized) => set({ detailsMaximized: maximized }),
+
+		stepActiveEntry: (delta) =>
+			set((state) => {
+				const visible = state.visibleEntryIndices;
+				if (visible.length === 0) return {};
+				const position = state.activeEntry === null ? -1 : visible.indexOf(state.activeEntry);
+				const next =
+					position === -1
+						? delta === 1
+							? 0
+							: visible.length - 1
+						: Math.min(visible.length - 1, Math.max(0, position + delta));
+				const target = visible[next];
+				const collapsedGroups = new Set(state.collapsedGroups);
+				collapsedGroups.delete(groupKeyFor(state.entries[target], state.groupBy));
+				return { activeEntry: target, scrollToIndex: target, collapsedGroups };
+			}),
+
+		setScrollToIndex: (index) => set({ scrollToIndex: index }),
+
+		toggleSelection: (index) =>
+			set((state) => {
+				const selected = new Set(state.selectedEntries);
+				if (selected.has(index)) {
+					selected.delete(index);
+					return { selectedEntries: selected };
 				}
-			});
-			const last = newSelected.size
-				? Array.from(newSelected).pop() ?? null
-				: null;
-			return {
-				selectedEntries: newSelected,
-				lastSelectedIndex: last,
-			};
-		}),
+				selected.add(index);
+				return { selectedEntries: selected, lastSelectedIndex: index };
+			}),
 
-	setExpandedEntry: (index: number | null) => set({ expandedEntry: index }),
+		selectRange: (index) =>
+			set((state) => {
+				const visible = state.visibleEntryIndices;
+				const target = visible.indexOf(index);
+				const selected = new Set(state.selectedEntries);
+				if (target === -1) {
+					selected.add(index);
+					return { selectedEntries: selected, lastSelectedIndex: index };
+				}
+				const anchor =
+					state.lastSelectedIndex !== null ? visible.indexOf(state.lastSelectedIndex) : -1;
+				const start = Math.min(anchor === -1 ? target : anchor, target);
+				const end = Math.max(anchor, target);
+				for (const i of visible.slice(start, end + 1)) selected.add(i);
+				return { selectedEntries: selected, lastSelectedIndex: index };
+			}),
 
-	setFocusedEntry: (index: number | null) => set({ focusedEntry: index }),
+		selectAll: () =>
+			set((state) => {
+				const selected = new Set(state.selectedEntries);
+				for (const i of state.visibleEntryIndices) selected.add(i);
+				return { selectedEntries: selected };
+			}),
 
-	setActiveTab: (tab: TabId) => set({ activeTab: tab }),
+		deselectAll: () => set(clearSelection),
 
-	setShowDeleteConfirm: (show: boolean) => set({ showDeleteConfirm: show }),
+		invertSelection: () =>
+			set((state) => {
+				const visible = new Set(state.visibleEntryIndices);
+				const selected = new Set<number>();
+				// Hidden selections are kept; only the visible ones are inverted.
+				state.selectedEntries.forEach((i) => {
+					if (!visible.has(i)) selected.add(i);
+				});
+				for (const i of state.visibleEntryIndices) {
+					if (!state.selectedEntries.has(i)) selected.add(i);
+				}
+				return { selectedEntries: selected, lastSelectedIndex: null };
+			}),
 
-	setFilterText: (text: string) =>
-		set({
-			filterText: text,
-			selectedEntries: new Set(),
-			lastSelectedIndex: null,
-		}),
+		setSelection: (indices) => set({ selectedEntries: new Set(indices), lastSelectedIndex: null }),
 
-	setSortBy: (sortBy) => set({ sortBy }),
+		setVisibleEntryIndices: (indices) => set({ visibleEntryIndices: indices }),
 
-	toggleSortOrder: () =>
-		set((state) => ({
-			sortOrder: state.sortOrder === "asc" ? "desc" : "asc",
-		})),
+		setSortBy: (sortBy) => set({ sortBy }),
+		setSortOrder: (sortOrder) => set({ sortOrder }),
+		toggleSortOrder: () =>
+			set((state) => ({ sortOrder: state.sortOrder === "asc" ? "desc" : "asc" })),
 
-	setSearchText: (text: string) =>
-		set({
-			searchText: text,
-			selectedEntries: new Set(),
-			lastSelectedIndex: null,
-		}),
+		// Changing what is visible clears the selection so hidden rows cannot be
+		// deleted or exported by accident.
+		setSearchText: (text) => set({ searchText: text, ...clearSelection }),
+		setResourceTypeFilter: (filter) => set({ resourceTypeFilter: filter, ...clearSelection }),
+		setAdvancedFilters: (filters) =>
+			set((state) => ({
+				advancedFilters: { ...state.advancedFilters, ...filters },
+				...clearSelection,
+			})),
+		resetAdvancedFilters: () =>
+			set({ advancedFilters: createDefaultAdvancedFilters(), ...clearSelection }),
+		resetAllFilters: () =>
+			set({
+				advancedFilters: createDefaultAdvancedFilters(),
+				searchText: "",
+				resourceTypeFilter: "all",
+				showBookmarksOnly: false,
+				timeRange: null,
+				...clearSelection,
+			}),
+		setShowBookmarksOnly: (show) => set({ showBookmarksOnly: show, ...clearSelection }),
+		toggleBookmarksOnly: () =>
+			set((state) => ({
+				showBookmarksOnly: !state.showBookmarksOnly,
+				...clearSelection,
+			})),
 
-	setResourceTypeFilter: (filter: ResourceType) =>
-		set({
-			resourceTypeFilter: filter,
-			selectedEntries: new Set(),
-			lastSelectedIndex: null,
-		}),
+		toggleColumn: (column) =>
+			set((state) => {
+				const columns = new Set(state.visibleColumns);
+				if (columns.has(column)) columns.delete(column);
+				else columns.add(column);
+				return { visibleColumns: columns };
+			}),
 
-	toggleTimeline: () =>
-		set((state) => ({
-			showTimeline: !state.showTimeline,
-			showAdvancedFilters: state.showTimeline ? false : false,
-		})),
+		setGroupBy: (groupBy) => set({ groupBy, collapsedGroups: new Set<string>() }),
 
-	setVisibleEntryIndices: (indices: number[]) =>
-		set({ visibleEntryIndices: indices }),
+		toggleGroup: (key) =>
+			set((state) => {
+				const groups = new Set(state.collapsedGroups);
+				if (groups.has(key)) groups.delete(key);
+				else groups.add(key);
+				return { collapsedGroups: groups };
+			}),
 
-	setScrollToIndex: (index: number | null) => set({ scrollToIndex: index }),
+		setShowOverview: (show) => set({ showOverview: show }),
 
-	setLastSelectedIndex: (index: number | null) =>
-		set({ lastSelectedIndex: index }),
+		setTimeRange: (range) =>
+			set({
+				timeRange: range && Number.isFinite(range.start) && range.end > range.start ? range : null,
+				...clearSelection,
+			}),
 
-	clearHarData: () =>
-		set({
-			harData: null,
-			entries: [],
-			selectedEntries: new Set(),
-			visibleEntryIndices: [],
-			expandedEntry: null,
-			lastSelectedIndex: null,
-			filterText: "",
-			searchText: "",
-			resourceTypeFilter: "all",
-		}),
+		addBookmark: (entryIndex, label, color, note) =>
+			set((state) => {
+				const bookmarks = new Map(state.bookmarks);
+				bookmarks.set(entryIndex, {
+					entryIndex,
+					label,
+					color,
+					note,
+					createdAt: new Date().toISOString(),
+				});
+				return { bookmarks };
+			}),
 
-	setViewMode: (mode: ViewMode) => set({ viewMode: mode }),
-
-	setSecondaryHarData: (data: HARData | null) =>
-		set({ secondaryHarData: data }),
-
-	setComparisonMode: (mode: "side-by-side" | "diff" | null) =>
-		set({ comparisonMode: mode }),
-
-	setAdvancedFilters: (filters: Partial<AdvancedFilters>) =>
-		set((state) => ({
-			advancedFilters: { ...state.advancedFilters, ...filters },
-		})),
-
-	toggleAdvancedFilters: () =>
-		set((state) => ({
-			showAdvancedFilters: !state.showAdvancedFilters,
-			showTimeline: state.showAdvancedFilters ? false : false,
-		})),
-
-	resetAdvancedFilters: () =>
-		set({
-			advancedFilters: {
-				statusCodes: [],
-				statusRanges: [],
-				sizeMin: null,
-				sizeMax: null,
-				durationMin: null,
-				durationMax: null,
-				domainPattern: "",
-				pathPattern: "",
-				headerMatches: [],
-				httpVersions: [],
-				methodFilters: [],
-			},
-		}),
-
-	addBookmark: (
-		entryIndex: number,
-		label: string,
-		color: string,
-		note?: string
-	) =>
-		set((state) => {
-			const newBookmarks = new Map(state.bookmarks);
-			newBookmarks.set(entryIndex, {
-				entryIndex,
-				label,
-				color,
-				note,
-				createdAt: new Date().toISOString(),
-			});
-			return { bookmarks: newBookmarks };
-		}),
-
-	removeBookmark: (entryIndex: number) =>
-		set((state) => {
-			const newBookmarks = new Map(state.bookmarks);
-			newBookmarks.delete(entryIndex);
-			return { bookmarks: newBookmarks };
-		}),
-
-	updateBookmark: (entryIndex: number, updates: Partial<Bookmark>) =>
-		set((state) => {
-			const newBookmarks = new Map(state.bookmarks);
-			const existing = newBookmarks.get(entryIndex);
-			if (existing) {
-				newBookmarks.set(entryIndex, { ...existing, ...updates });
-			}
-			return { bookmarks: newBookmarks };
-		}),
-
-	toggleBookmarksOnly: () =>
-		set((state) => ({
-			showBookmarksOnly: !state.showBookmarksOnly,
-		})),
-	toggleBookmarksPanel: () =>
-		set((state) => ({ showBookmarksPanel: !state.showBookmarksPanel })),
-
-	setTimelineZoom: (zoom: number) =>
-		set({ timelineZoom: Math.max(0.1, Math.min(zoom, 10)) }),
-
-	setTimelineScrollOffset: (offset: number) =>
-		set({ timelineScrollOffset: Math.max(0, offset) }),
-
-	setTimelineViewMode: (mode: TimelineViewMode) =>
-		set({ timelineViewMode: mode }),
-
-	setTimelineGroupMode: (mode: TimelineGroupMode) =>
-		set({ timelineGroupMode: mode, expandedDomainGroups: new Set() }),
-
-	setTimelineHoveredEntry: (index: number | null) =>
-		set({ timelineHoveredEntry: index }),
-
-	setTimelineSelectedForComparison: (indices: [number, number] | null) =>
-		set({ timelineSelectedForComparison: indices }),
-
-	toggleComparisonEntry: (index: number) =>
-		set((state) => {
-			const current = state.timelineSelectedForComparison;
-			if (!current) {
+		removeBookmark: (entryIndex) =>
+			set((state) => {
+				const bookmarks = new Map(state.bookmarks);
+				bookmarks.delete(entryIndex);
 				return {
-					timelineSelectedForComparison: [index, -1] as [
-						number,
-						number
-					],
+					bookmarks,
+					showBookmarksOnly: bookmarks.size === 0 ? false : state.showBookmarksOnly,
 				};
-			}
-			if (current[0] === index) {
-				return { timelineSelectedForComparison: null };
-			}
-			if (current[1] === -1) {
-				return {
-					timelineSelectedForComparison: [current[0], index] as [
-						number,
-						number
-					],
-				};
-			}
-			return {
-				timelineSelectedForComparison: [index, -1] as [number, number],
-			};
-		}),
+			}),
 
-	toggleDomainGroup: (domain: string) =>
-		set((state) => {
-			const newGroups = new Set(state.expandedDomainGroups);
-			if (newGroups.has(domain)) {
-				newGroups.delete(domain);
-			} else {
-				newGroups.add(domain);
-			}
-			return { expandedDomainGroups: newGroups };
-		}),
+		updateBookmark: (entryIndex, updates) =>
+			set((state) => {
+				const existing = state.bookmarks.get(entryIndex);
+				if (!existing) return {};
+				const bookmarks = new Map(state.bookmarks);
+				bookmarks.set(entryIndex, { ...existing, ...updates, entryIndex });
+				return { bookmarks };
+			}),
 
-	toggleColumn: (column: string) =>
-		set((state) => {
-			const newColumns = new Set(state.visibleColumns);
-			if (newColumns.has(column)) {
-				newColumns.delete(column);
-			} else {
-				newColumns.add(column);
-			}
-			return { visibleColumns: newColumns };
-		}),
+		setSecondaryHarData: (data, fileName = null) =>
+			set({ secondaryHarData: data, secondaryFileName: data ? fileName : null }),
 
-	toggleKeyboardShortcuts: () =>
-		set((state) => ({
-			showKeyboardShortcuts: !state.showKeyboardShortcuts,
-		})),
-}));
+		setComparisonMode: (mode) => set({ comparisonMode: mode }),
+
+		openExportView: (scope) =>
+			set({
+				viewMode: "export",
+				pendingExportScope: scope ?? null,
+				showCommandPalette: false,
+				showBookmarksSheet: false,
+			}),
+
+		consumePendingExportScope: () => {
+			const scope = get().pendingExportScope;
+			if (scope !== null) set({ pendingExportScope: null });
+			return scope;
+		},
+
+		setTimingComparison: (pair) => set({ timingComparison: pair }),
+		setShowKeyboardShortcuts: (show) =>
+			set({ showKeyboardShortcuts: show, showCommandPalette: false }),
+		setShowCommandPalette: (show) => set({ showCommandPalette: show }),
+		setShowBookmarksSheet: (show) => set({ showBookmarksSheet: show }),
+		setShowFiltersPanel: (show) => set({ showFiltersPanel: show }),
+		requestDelete: (indices) => set({ pendingDelete: indices.length > 0 ? [...indices] : null }),
+		cancelDelete: () => set({ pendingDelete: null }),
+	};
+});

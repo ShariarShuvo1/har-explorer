@@ -2,15 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
-import {
-	generateMetadata,
-	viewport as viewportConfig,
-} from "@/lib/seo/metadata";
-import {
-	STRUCTURED_DATA,
-	FAQ_STRUCTURED_DATA,
-	GA_MEASUREMENT_ID,
-} from "@/lib/seo/constants";
+import { buildMetadata, viewport as viewportConfig } from "@/lib/seo/metadata";
+import { STRUCTURED_DATA, GA_MEASUREMENT_ID } from "@/lib/seo/constants";
+import { serializeJsonLd } from "@/lib/seo/json-ld";
+import { Providers } from "@/components/app-shell/providers";
 
 const geistSans = Geist({
 	variable: "--font-geist-sans",
@@ -22,19 +17,9 @@ const geistMono = Geist_Mono({
 	subsets: ["latin"],
 });
 
-const baseUrl =
-	process.env.PUBLIC_DEPLOYED_URL || "https://har-explorer.vercel.app";
+const enableAnalytics = process.env.NODE_ENV === "production";
 
-export const metadata: Metadata = {
-	...generateMetadata(baseUrl),
-	verification: {
-		google: "fsvwCxiT-jgIJrC7_to1MJ3P48M_ihUAwd7WDBeCVMw",
-	},
-	icons: {
-		icon: [{ url: "/icon.png", type: "image/png" }],
-		apple: [{ url: "/icon.png", type: "image/png" }],
-	},
-};
+export const metadata: Metadata = buildMetadata();
 
 export const viewport: Viewport = viewportConfig;
 
@@ -44,37 +29,31 @@ export default function RootLayout({
 	children: React.ReactNode;
 }>) {
 	return (
-		<html lang="en">
+		<html lang="en" suppressHydrationWarning>
 			<head>
 				<script
 					type="application/ld+json"
 					dangerouslySetInnerHTML={{
-						__html: JSON.stringify(STRUCTURED_DATA),
-					}}
-				/>
-				<script
-					type="application/ld+json"
-					dangerouslySetInnerHTML={{
-						__html: JSON.stringify(FAQ_STRUCTURED_DATA),
+						__html: serializeJsonLd(STRUCTURED_DATA),
 					}}
 				/>
 			</head>
-			<body
-				className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-			>
-				<Script
-					src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-					strategy="afterInteractive"
-				/>
-				<Script id="google-analytics" strategy="afterInteractive">
-					{`
-						window.dataLayer = window.dataLayer || [];
-						function gtag(){dataLayer.push(arguments);}
-						gtag('js', new Date());
-						gtag('config', '${GA_MEASUREMENT_ID}');
-					`}
-				</Script>
-				{children}
+			<body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+				{enableAnalytics && (
+					<>
+						<Script
+							src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+							strategy="afterInteractive"
+						/>
+						<Script id="google-analytics" strategy="afterInteractive">
+							{`window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${GA_MEASUREMENT_ID}');`}
+						</Script>
+					</>
+				)}
+				<Providers>{children}</Providers>
 			</body>
 		</html>
 	);
